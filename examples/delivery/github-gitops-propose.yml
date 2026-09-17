@@ -1,0 +1,29 @@
+name: Private Argo CD release proposal
+on:
+  workflow_dispatch:
+    inputs:
+      build-run-id:
+        description: Successful run ID from the trusted image-build workflow
+        required: true
+        type: string
+      cluster-slot:
+        description: One selected slot; verify it before proposing the next
+        required: true
+        type: choice
+        default: aks02
+        options: [aks01, aks02]
+permissions: {contents: read, actions: read}
+jobs:
+  propose:
+    uses: MikeeeGit/aks-delivery-templates/.github/workflows/gitops-propose.yml@c7283d6c6c2c4aa89ac26eabd66f77b34b38eac2
+    with:
+      template-ref: 'c7283d6c6c2c4aa89ac26eabd66f77b34b38eac2'
+      build-run-id: ${{ inputs.build-run-id }}
+      build-workflow: image-build.yml
+      environment: pprd
+      region: uks
+      cluster-slot: ${{ inputs.cluster-slot }}
+      config: delivery.gateway.apps.json
+      approval-environment: gitops-proposals
+    secrets:
+      gitops-token: ${{ secrets.GITOPS_PR_TOKEN }}

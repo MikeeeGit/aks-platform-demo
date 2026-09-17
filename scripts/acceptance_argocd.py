@@ -65,7 +65,7 @@ class GitFixture:
 
     def replace(self, slot, materialized):
         target = self.slot_path(slot)
-        allowed = {"kustomization.yaml", "manifest.yaml", "release.json", "ingress-ca.pem"}
+        allowed = {"manifest.yaml", "release.json", "ingress-ca.pem"}
         source = list(Path(materialized).iterdir())
         if not source or any(p.is_symlink() or not p.is_file() or p.name not in allowed for p in source):
             raise ValueError("Unexpected materialized release content.")
@@ -196,11 +196,36 @@ def sanitize_diagnostic(value):
     return value[:200_000]
 
 
-def authorization_answer(returncode, stdout):
+def authorization_answer(returncode, stdout, stderr=""):
     """kubectl can-i uses exit 1 for denial; transport errors must never count."""
+    if "doesn't have a resource type" in stderr:
+        raise RuntimeError("Authorization probe cannot rely on an undiscovered Kubernetes resource.")
     answer = stdout.strip()
     if returncode == 0 and answer == "yes":
         return True
     if returncode == 1 and answer == "no":
         return False
     raise RuntimeError("kubectl auth can-i did not return an unambiguous authorization answer.")
+
+
+def authorization_review(resource, namespace, verb):
+    """Specify group explicitly even when the synthetic cluster lacks the CRD."""
+    name, _, group = resource.partition(".")
+    attributes = {"group": group, "resource": name, "verb": verb}
+    if namespace is not None:
+        attributes["namespace"] = namespace
+    return {"apiVersion": "authorization.k8s.io/v1", "kind": "SelfSubjectAccessReview",
+            "spec": {"resourceAttributes": attributes}}
+
+
+def authorization_review_answer(returncode, stdout):
+    if returncode != 0:
+        raise RuntimeError("Kubernetes authorization review request failed.")
+    try:
+        status = json.loads(stdout)["status"]
+    except (ValueError, KeyError, TypeError) as error:
+        raise RuntimeError("Kubernetes authorization review returned malformed status.") from error
+    if (type(status.get("allowed")) is not bool or status.get("evaluationError")
+            or (status["allowed"] and status.get("denied"))):
+        raise RuntimeError("Kubernetes authorization review was inconclusive.")
+    return status["allowed"]

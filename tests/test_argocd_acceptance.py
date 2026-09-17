@@ -80,6 +80,22 @@ class RevisionTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 argo.authorization_answer(code, answer)
 
+    def test_explicit_review_preserves_absent_crd_group_and_rejects_errors(self):
+        expected = {"group": "secrets-store.csi.x-k8s.io", "resource": "secretproviderclasses",
+                    "verb": "create", "namespace": "platform-demo"}
+        review = argo.authorization_review("secretproviderclasses.secrets-store.csi.x-k8s.io", "platform-demo", "create")
+        self.assertEqual(review["spec"]["resourceAttributes"], expected)
+        self.assertTrue(argo.authorization_review_answer(0, json.dumps({"status": {"allowed": True}})))
+        self.assertFalse(argo.authorization_review_answer(0, json.dumps({"status": {"allowed": False}})))
+        for status in ({}, {"allowed": "true"}, {"allowed": False, "evaluationError": "API unavailable"},
+                       {"allowed": True, "denied": True}):
+            with self.assertRaises(RuntimeError):
+                argo.authorization_review_answer(0, json.dumps({"status": status}))
+        with self.assertRaises(RuntimeError):
+            argo.authorization_review_answer(1, json.dumps({"status": {"allowed": False}}))
+        with self.assertRaises(RuntimeError):
+            argo.authorization_answer(1, "no", "Warning: the server doesn't have a resource type 'missing'")
+
     def test_sync_is_exact_manual_non_pruning_non_forced(self):
         self.assertEqual(argo.sync_patch(A)["operation"]["sync"],
                          {"revision": A, "prune": False, "syncStrategy": {"apply": {"force": False}}})
@@ -110,7 +126,6 @@ class GitFixtureTests(unittest.TestCase):
                 release = root / "release"
                 release.mkdir()
                 (release / "manifest.yaml").write_text("initial release bytes\n")
-                (release / "kustomization.yaml").write_text("resources: [manifest.yaml]\n")
                 fixture.replace("aks01", release)
                 fixture.replace("aks02", release)
                 first = fixture.commit("Initial fixture")
@@ -204,10 +219,14 @@ class OrchestrationTests(unittest.TestCase):
         obj = object.__new__(harness.ArgoAcceptance)
         obj.args, obj.kubeconfig, obj.record = SimpleNamespace(kubectl="kubectl"), Path("/tmp/test-kubeconfig"), {}
         def response(command, **kwargs):
+            if "--raw" in command:
+                review = json.loads(kwargs["input"])
+                self.assertEqual(review["spec"]["resourceAttributes"]["group"], "secrets-store.csi.x-k8s.io")
+                self.assertEqual(review["spec"]["resourceAttributes"]["resource"], "secretproviderclasses")
+                return SimpleNamespace(returncode=0, stdout=json.dumps({"status": {"allowed": True}}), stderr="")
             resource = command[command.index("can-i") + 2]
-            allowed = resource in ("deployments.apps", "httproutes.gateway.networking.k8s.io",
-                                   "secretproviderclasses.secrets-store.csi.x-k8s.io") and command[-1] == "platform-demo"
-            return SimpleNamespace(returncode=0 if allowed else 1, stdout="yes\n" if allowed else "no\n")
+            allowed = resource in ("deployments.apps", "httproutes.gateway.networking.k8s.io") and command[-1] == "platform-demo"
+            return SimpleNamespace(returncode=0 if allowed else 1, stdout="yes\n" if allowed else "no\n", stderr="")
         with patch.object(harness.subprocess, "run", side_effect=response) as invoke:
             obj.check_controller_rbac("isolated-test")
         self.assertEqual(len(obj.record["rbac_checks"]), 12)
@@ -215,8 +234,11 @@ class OrchestrationTests(unittest.TestCase):
         for call in invoke.call_args_list:
             self.assertIn("system:serviceaccount:argocd:argocd-application-controller", call.args[0])
             self.assertIn("kind-isolated-test", call.args[0])
-        with patch.object(harness.subprocess, "run",
-                          return_value=SimpleNamespace(returncode=0, stdout="yes")):
+        def overbroad(command, **kwargs):
+            if "--raw" in command:
+                return response(command, **kwargs)
+            return SimpleNamespace(returncode=0, stdout="yes", stderr="")
+        with patch.object(harness.subprocess, "run", side_effect=overbroad):
             with self.assertRaisesRegex(AssertionError, "RBAC differs"):
                 obj.check_controller_rbac("isolated-test")
 

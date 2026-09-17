@@ -105,15 +105,26 @@ class ArgoAcceptance(Acceptance):
             ("namespaces", None), ("clusterroles.rbac.authorization.k8s.io", None))]
         for verb, resource, namespace, expected in checks:
             command = [str(self.args.kubectl), "--kubeconfig", str(self.kubeconfig),
-                       "--context", "kind-" + cluster, "--as", subject, "auth", "can-i", verb, resource]
-            if namespace:
-                command += ["--namespace", namespace]
-            result = subprocess.run(command, text=True, stdout=subprocess.PIPE,
+                       "--context", "kind-" + cluster, "--as", subject]
+            explicit = resource == "secretproviderclasses.secrets-store.csi.x-k8s.io"
+            if explicit:
+                # CSI is deliberately absent from kind. kubectl can-i loses the API
+                # group when discovery cannot resolve a CRD; submit exact attributes.
+                command += ["create", "--raw", "/apis/authorization.k8s.io/v1/selfsubjectaccessreviews", "-f", "-"]
+                body = json.dumps(argo.authorization_review(resource, namespace, verb))
+            else:
+                command += ["auth", "can-i", verb, resource]
+                if namespace:
+                    command += ["--namespace", namespace]
+                body = None
+            result = subprocess.run(command, input=body, text=True, stdout=subprocess.PIPE,
                                     stderr=subprocess.PIPE, timeout=30, check=False)
-            allowed = argo.authorization_answer(result.returncode, result.stdout)
+            allowed = (argo.authorization_review_answer(result.returncode, result.stdout) if explicit else
+                       argo.authorization_answer(result.returncode, result.stdout, result.stderr))
             self.record.setdefault("rbac_checks", []).append({
                 "cluster": cluster, "subject": subject, "verb": verb, "resource": resource,
-                "namespace": namespace, "expected_allowed": expected, "allowed": allowed})
+                "namespace": namespace, "expected_allowed": expected, "allowed": allowed,
+                "method": "explicit-self-subject-access-review" if explicit else "kubectl-auth-can-i"})
             if allowed != expected:
                 raise AssertionError(f"Argo RBAC differs from intended scope: {verb} {resource} in {namespace}.")
         print("PASS namespace-scoped Argo controller authorization " + cluster, flush=True)

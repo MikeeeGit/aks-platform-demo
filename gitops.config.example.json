@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "repository_url": "https://github.com/YOUR-ORG/private-platform-demo.git",
+  "revision": "main",
+  "argo_namespace": "argocd",
+  "project": "platform-demo",
+  "application_prefix": "platform-demo",
+  "cluster_api_servers": {
+    "pprd/uks/aks01": "https://aks01.REPLACE.privatelink.uksouth.azmk8s.io",
+    "pprd/uks/aks02": "https://aks02.REPLACE.privatelink.uksouth.azmk8s.io"
+  }
+}

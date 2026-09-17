@@ -1,6 +1,6 @@
 # AKS platform demo
 
-A small, synthetic Node.js application demonstrating build-once delivery to two private AKS clusters using an immutable image digest and Kustomize. It provides health, readiness, and version endpoints so a deployment and Application Gateway cutover can be checked explicitly.
+A small, synthetic Node.js application demonstrating build-once delivery to two private AKS clusters using an immutable image digest and shared Kustomize configuration. Choose direct pipeline deployment or the additional Argo CD method. It provides health, readiness, and version endpoints so a deployment and Application Gateway cutover can be checked explicitly.
 
 This repository is an application example. Infrastructure comes from the companion `azure-network-foundation`, `azure-aks-foundation`, and `azure-application-gateway` repositories. Reusable delivery comes from `aks-delivery-templates`. Example names, addresses, subscriptions, and domains are synthetic; replace them together before deployment.
 
@@ -32,13 +32,14 @@ Visit `http://localhost:8080/version`. The application has no npm runtime depend
 - [aks01 overlay](deploy/gateway-api/overlays/pprd/uks/aks01/kustomization.yaml) and [aks02 overlay](deploy/gateway-api/overlays/pprd/uks/aks02/kustomization.yaml): the same application with explicit slot metadata.
 - [Operator namespace bootstrap](deploy/bootstrap/namespace.yaml): applied separately with Pod Security admission restricted.
 - [Private pipeline examples](examples/delivery/README.md): trusted build and selected-release promotion through shared templates.
+- [Argo CD example](docs/ARGO-CD.md): reviewed GitOps proposals and per-slot reconciliation of the same rendered YAML.
 - [Smoke helper](scripts/smoke.mjs): expected slot and full revision checks over HTTP or verified HTTPS.
 
 The recommended full path uses the independently managed Envoy Gateway platform profile and application-owned HTTPRoutes. Read the [Gateway API profile guide](docs/GATEWAY-API.md) before first deployment. Its ClusterIP Service forwards port 80 to the nonroot app on 8080. The platform pipeline owns the private listener and load balancer. The [direct-Service context](delivery.apps.json) remains a lightweight alternative with its own internal LoadBalancer; it is not the full ingress architecture.
 
 ## Guides
 
-Start with [first-time setup](docs/SETUP.md), then [delivery and cutover](docs/DELIVERY.md). See [testing and two-cluster acceptance](docs/TESTING.md), [source-pattern provenance](docs/PROVENANCE.md) for preserved behavior and deliberate changes, [contribution guidance](CONTRIBUTING.md), and [security guidance](SECURITY.md).
+Start with [first-time setup](docs/SETUP.md), then choose [direct delivery and cutover](docs/DELIVERY.md) or [Argo CD delivery](docs/ARGO-CD.md). Argo supports plain YAML and Kustomize; here CI renders the shared source and Argo reads the resulting plain YAML from Git. See [testing and two-cluster acceptance](docs/TESTING.md), [source-pattern provenance](docs/PROVENANCE.md) for preserved behavior and deliberate changes, [contribution guidance](CONTRIBUTING.md), and [security guidance](SECURITY.md).
 
 ## Verification scope
 

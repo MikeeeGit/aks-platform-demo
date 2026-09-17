@@ -1,5 +1,7 @@
 # Build, promote, verify, and cut over
 
+The additional [Argo CD deployment guide](ARGO-CD.md) reuses this same infrastructure, Gateway API profile and application configuration. Choose either direct application deployment or Argo ownership for each slot.
+
 Complete [setup](SETUP.md) and [the maintained Gateway API profile](GATEWAY-API.md). Private callers select `delivery.gateway.apps.json`. The direct-Service alternative is `delivery.apps.json` with `bootstrap.apps.json` and requires corresponding caller changes.
 
 ## Build once and select the release

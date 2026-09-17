@@ -1,5 +1,7 @@
 # First-time setup
 
+The additional [Argo CD deployment guide](ARGO-CD.md) reuses this same infrastructure, Gateway API profile and application configuration. Choose either direct application deployment or Argo ownership for each slot.
+
 ## Local tools and checks
 
 Use Node.js 24, Python 3.10 or newer, and the kubectl version pinned by the chosen `aks-delivery-templates` release. Docker with Buildx is needed to build an image. Azure CLI and kubelogin are needed only for authenticated build/deployment. Review and pin the shared template release before use.

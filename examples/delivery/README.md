@@ -8,6 +8,9 @@ These files are intentionally outside active workflow locations. Copy them into 
 | Build once without deploying | [github-build.yml](github-build.yml) | [azure-build.yml](azure-build.yml) |
 | Build once and deploy the current release to selected slots | [github-build-deploy.yml](github-build-deploy.yml) | [azure-build-deploy.yml](azure-build-deploy.yml) |
 | Promote a selected successful build run without rebuilding | [github-promote.yml](github-promote.yml) | [azure-promote.yml](azure-promote.yml) |
+| Propose a selected build as an Argo CD GitOps PR | [github-gitops-propose.yml](github-gitops-propose.yml) | [azure-gitops-propose.yml](azure-gitops-propose.yml) |
+
+The Argo proposal callers are additional choices. They never deploy directly, merge their own PR, or change traffic. Follow [Argo setup and operation](../../docs/ARGO-CD.md); use the build-only caller and pause direct application deployments before Argo owns the workload. Create the separate `gitops-proposals` approval environment and scoped repository publisher access. Argo installation and repository read credentials are platform responsibilities.
 
 ## Configure the private consumer
 

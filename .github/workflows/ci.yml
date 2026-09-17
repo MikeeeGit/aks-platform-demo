@@ -21,7 +21,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: MikeeeGit/aks-delivery-templates
-          ref: 02a8faecc3dfd1a0c3b4f9c0e0bdfbc53057ed7c
+          ref: c7283d6c6c2c4aa89ac26eabd66f77b34b38eac2
           path: templates
           persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -98,7 +98,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: MikeeeGit/aks-delivery-templates
-          ref: 02a8faecc3dfd1a0c3b4f9c0e0bdfbc53057ed7c
+          ref: c7283d6c6c2c4aa89ac26eabd66f77b34b38eac2
           path: templates
           persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6

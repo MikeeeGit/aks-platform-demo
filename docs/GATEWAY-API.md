@@ -1,5 +1,7 @@
 # Maintained Gateway API application profile
 
+The additional [Argo CD deployment guide](ARGO-CD.md) reuses this same infrastructure, Gateway API profile and application configuration. Choose either direct application deployment or Argo ownership for each slot.
+
 The recommended full profile is [delivery.gateway.apps.json](../delivery.gateway.apps.json), with [bootstrap.gateway.apps.json](../bootstrap.gateway.apps.json) and the [Gateway API Kustomize base](../deploy/gateway-api/base/kustomization.yaml). Private pipeline examples select these files. The independent platform consumer installs Envoy Gateway; application delivery creates an HTTPRoute, not the controller or listener.
 
 | Profile | Purpose | Frontend ownership |

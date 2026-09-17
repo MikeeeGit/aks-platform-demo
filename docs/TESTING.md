@@ -38,6 +38,24 @@ The isolated source fixture replaces Azure CSI mounting with an explicitly local
 
 An incomplete run or cleanup failure produces a failed report and nonzero status. GitHub Actions and Azure Pipelines run this harness on isolated, Docker-capable hosted workers and retain the JSON report. Only a completed successful report with no cleanup errors counts as acceptance evidence. The retained diagnostics include bounded port-forward output and selected resource/controller status; temporary certificate private keys and kubecredentials are excluded. Positive HTTPS, unmatched HTTP Host and wrong-SNI checks use separate tunnels so an intentional TLS rejection cannot invalidate the next probe.
 
+## Two real Argo CD instances
+
+The additional [Argo harness](../scripts/test_argocd_dual_cluster.py) uses the same Docker-capable prerequisites and pinned shared tooling:
+
+```bash
+.venv/bin/python scripts/test_argocd_dual_cluster.py   --templates ../aks-delivery-templates   --report .delivery/argocd-report.json   --artifacts .delivery/argocd-diagnostics
+```
+
+It creates two independent clusters and installs real pinned Argo controllers, Envoy and metrics-server. A temporary read-only Git HTTP service is bound only to the run's Docker bridge; production GitOps configuration requires HTTPS. Argo alone applies application workloads from the committed plain manifest. The existing Kustomize renderer prepares those manifests upstream.
+
+The report records initial reconciliation on both slots, a new real image promoted only to aks02, Git-based rollback, rejection of an invalid Deployment and recovery, manual live drift detected as OutOfSync and repaired from Git, and unchanged active-slot image/source. Each successful release requires exact operation revision, Synced/Healthy status, rollout, real app responses and verified Envoy HTTPS. HPA metrics/conditions and impersonated controller authorization checks are recorded separately. Positive RBAC checks include application custom-resource permissions; denial checks include Secrets, Roles, Gateways, other namespaces and cluster administration.
+
+The kind fixture uses a local TLS Secret instead of Azure CSI. Its absent CSI custom resource is authorization-tested through an explicit SelfSubjectAccessReview, not claimed as an installed or exercised CSI provider. The metrics-server fixture uses an explicitly test-only insecure kubelet TLS option for kind's node certificate; production settings are unchanged. Kind's default networking does not qualify Azure NetworkPolicy enforcement.
+
+A report passes only if all expected operations and cleanup succeed. CI retains `argocd-dual-cluster-acceptance` separately from `dual-cluster-acceptance`; inspecting one artifact cannot prove the other method. Diagnostics exclude Secrets, credential files and certificate private keys. The test does not use a production registry build receipt and does not claim a production image vulnerability scan.
+
+The shared helper tests cover passed-build receipt selection/binding, exact Git commit and folder checks, wrong-cluster/config refusal, manual sync controls and review-only proposal API contracts. Private publisher tokens, real repository credentials, protected-environment approvals and SSO need an actual private consumer qualification. The HA profile is preparation-tested; the hosted runtime test uses the evaluation profile and does not establish HA failure tolerance.
+
 ## Live platform qualification
 
 Follow [deployment verification](DELIVERY.md): confirm both Service private IPs, image pull, private API access, namespace permissions, selected-slot HTTP responses, gateway backend health/TLS/WAF, and reviewed cutover/rollback. Keep local unit, kind acceptance, hosted pipeline, and live AKS evidence distinct.
