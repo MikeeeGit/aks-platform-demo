@@ -1,0 +1,38 @@
+# Archived retired ingress-nginx comparison only. Use gateway-api for maintained deployments.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: platform-demo
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /$1
+    nginx.ingress.kubernetes.io/use-regex: 'true'
+    nginx.ingress.kubernetes.io/proxy-buffers-number: '4'
+    nginx.ingress.kubernetes.io/proxy-buffer-size: 16k
+spec:
+  ingressClassName: nginx
+  tls:
+  - secretName: platform-demo-tls
+    hosts:
+    - web.example.test
+    - api.example.test
+  rules:
+  - host: web.example.test
+    http:
+      paths:
+      - path: /(.*)
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: platform-demo
+            port:
+              number: 80
+  - host: api.example.test
+    http:
+      paths:
+      - path: /(.*)
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: platform-demo
+            port:
+              number: 80

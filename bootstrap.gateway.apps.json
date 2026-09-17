@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "targets": [
+    {
+      "environment": "pprd",
+      "region": "uks",
+      "slot": "aks01",
+      "approval_environment": "bootstrap-pprd-uks-aks01",
+      "deploy_principal_object_ids": [
+        "00000000-0000-0000-0000-000000000101"
+      ],
+      "pod_security_version": "v1.35",
+      "require_key_vault_csi": true
+    },
+    {
+      "environment": "pprd",
+      "region": "uks",
+      "slot": "aks02",
+      "approval_environment": "bootstrap-pprd-uks-aks02",
+      "deploy_principal_object_ids": [
+        "00000000-0000-0000-0000-000000000101"
+      ],
+      "pod_security_version": "v1.36",
+      "require_key_vault_csi": true
+    }
+  ]
+}

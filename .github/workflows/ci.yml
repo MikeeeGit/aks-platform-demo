@@ -1,0 +1,88 @@
+name: Application CI
+on:
+  pull_request:
+  push:
+    branches: [main, develop]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: app-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: app
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: MikeeeGit/aks-delivery-templates
+          ref: 32e59a0fcd80dfcfeb0a24fc21c650d644d9da2d
+          path: templates
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: app/.node-version
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - name: Test application and release metadata
+        working-directory: app
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm test
+          BUILD_REVISION="$GITHUB_SHA" npm run build
+      - name: Install checked Kubernetes and Helm clients
+        run: |
+          python3 -m venv "$RUNNER_TEMP/validation-python"
+          "$RUNNER_TEMP/validation-python/bin/pip" install --require-hashes -r templates/requirements.txt
+          python3 templates/scripts/install_tools.py --directory "$RUNNER_TEMP/aks-tools"
+      - name: Validate application overlays and render both slots
+        run: |
+          export PATH="$RUNNER_TEMP/aks-tools:$PATH"
+          "$RUNNER_TEMP/validation-python/bin/python" -m unittest discover -s app/tests -p 'test_*.py' -v
+          "$RUNNER_TEMP/validation-python/bin/python" templates/scripts/delivery.py validate --source app
+          for profile in direct gateway; do
+            if [ "$profile" = gateway ]; then
+              config=delivery.gateway.apps.json
+              bootstrap=bootstrap.gateway.apps.json
+            else
+              config=delivery.apps.json
+              bootstrap=bootstrap.apps.json
+            fi
+            "$RUNNER_TEMP/validation-python/bin/python" templates/scripts/delivery.py validate --source app --config "$config"
+            for slot in aks01 aks02; do
+              "$RUNNER_TEMP/validation-python/bin/python" templates/scripts/bootstrap.py resolve --source app --config "$bootstrap" --environment pprd --region uks --slot "$slot"
+              "$RUNNER_TEMP/validation-python/bin/python" templates/scripts/delivery.py render --source app --config "$config" --commit "$GITHUB_SHA" --digest "sha256:$(printf '%064d' 0)" --environment pprd --region uks --slot "$slot" --output "$RUNNER_TEMP/rendered-$profile-$slot"
+            done
+          done
+      - name: Build and smoke-test the container without cloud credentials
+        working-directory: app
+        run: |
+          set -euo pipefail
+          docker build --build-arg BUILD_REVISION="$GITHUB_SHA" --tag aks-platform-demo:ci .
+          container=$(docker run --detach --rm --read-only --cap-drop ALL --security-opt no-new-privileges --tmpfs /tmp:rw,noexec,nosuid,size=16m --publish 127.0.0.1:18080:8080 --env APP_SLOT=aks01 aks-platform-demo:ci)
+          trap 'docker rm -f "$container" >/dev/null 2>&1 || true' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:18080/readyz >/dev/null; then break; fi
+            sleep 1
+          done
+          node scripts/smoke.mjs --url http://127.0.0.1:18080 --host web.example.test --expected-slot aks01 --expected-revision "$GITHUB_SHA"
+      - name: Deploy, promote and roll back across two Kubernetes clusters
+        run: |
+          set -euo pipefail
+          command -v openssl
+          python3 app/scripts/install_ci_tools.py --directory "$RUNNER_TEMP/aks-tools"
+          export PATH="$RUNNER_TEMP/aks-tools:$PATH"
+          "$RUNNER_TEMP/validation-python/bin/python" app/scripts/test_dual_cluster.py --templates "$GITHUB_WORKSPACE/templates" --report "$RUNNER_TEMP/dual-cluster-report.json"
+      - name: Retain Kubernetes acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: dual-cluster-acceptance
+          path: ${{ runner.temp }}/dual-cluster-report.json
+          if-no-files-found: ignore
+          retention-days: 14

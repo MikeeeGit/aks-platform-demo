@@ -1,0 +1,40 @@
+# Controller and data-plane resources are platform-owned. GatewayNamespace mode
+# places Envoy pods here; identify that Gateway exactly instead of trusting every pod.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: platform-demo-default-deny
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: platform-demo
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: platform-demo-traffic
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: platform-demo
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              gateway.envoyproxy.io/owning-gateway-name: platform-demo-private
+              gateway.envoyproxy.io/owning-gateway-namespace: platform-demo
+      ports:
+        - {protocol: TCP, port: 8080}
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}

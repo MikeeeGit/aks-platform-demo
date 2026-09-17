@@ -1,0 +1,15 @@
+trigger: none
+pr: none
+resources:
+  repositories:
+    - repository: aksTemplates
+      type: git
+      name: Platform/aks-delivery-templates # REPLACE the synthetic project name.
+      ref: '32e59a0fcd80dfcfeb0a24fc21c650d644d9da2d' # Reviewed shared-template commit; update deliberately.
+stages:
+  - template: azure-pipelines/stages/build.yml@aksTemplates
+    parameters:
+      serviceConnection: example-acr-build-federated
+      deploymentEnvironment: image-build
+      configFile: delivery.gateway.apps.json
+      pool: {vmImage: ubuntu-24.04}

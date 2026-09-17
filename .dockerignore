@@ -1,0 +1,11 @@
+*
+!package.json
+!package-lock.json
+!Dockerfile
+!scripts/
+!scripts/build.mjs
+!src/
+!src/**
+!scripts/smoke.mjs
+!tests/
+!tests/*.test.mjs

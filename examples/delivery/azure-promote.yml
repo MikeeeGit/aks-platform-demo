@@ -1,0 +1,41 @@
+trigger: none
+pr: none
+parameters:
+  - name: buildRunId
+    displayName: Successful image build run ID
+    type: string
+  - name: buildDefinitionId
+    displayName: Expected trusted image build pipeline definition ID
+    type: string
+  - name: buildArtifact
+    displayName: Receipt artifact matching the selected build pipeline
+    type: string
+    default: image-release-BuildApplication
+    values: [image-release-BuildApplication, image-release-Application_Build]
+  - name: clusterSlots
+    displayName: Selected slots in deployment order
+    type: object
+    default: [aks01]
+  - name: deploySequentially
+    displayName: Require the first slot to succeed before the second
+    type: boolean
+    default: true
+resources:
+  repositories:
+    - repository: aksTemplates
+      type: git
+      name: Platform/aks-delivery-templates # REPLACE the synthetic project name.
+      ref: '32e59a0fcd80dfcfeb0a24fc21c650d644d9da2d' # Reviewed shared-template commit; update deliberately.
+stages:
+  - template: azure-pipelines/stages/promote.yml@aksTemplates
+    parameters:
+      buildRunId: ${{ parameters.buildRunId }}
+      buildDefinitionId: ${{ parameters.buildDefinitionId }}
+      buildArtifact: ${{ parameters.buildArtifact }}
+      serviceConnection: example-aks-deploy-federated
+      environment: pprd
+      region: uks
+      clusterSlots: ${{ parameters.clusterSlots }}
+      deploySequentially: ${{ parameters.deploySequentially }}
+      configFile: delivery.gateway.apps.json
+      pool: {name: aks-private}

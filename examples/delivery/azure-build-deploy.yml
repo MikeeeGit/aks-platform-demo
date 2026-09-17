@@ -1,0 +1,31 @@
+trigger: none
+pr: none
+parameters:
+  - name: clusterSlots
+    displayName: Selected slots in deployment order
+    type: object
+    default: [aks01]
+  - name: deploySequentially
+    displayName: Require the first slot to succeed before the second
+    type: boolean
+    default: true
+resources:
+  repositories:
+    - repository: aksTemplates
+      type: git
+      name: Platform/aks-delivery-templates # REPLACE the synthetic project name.
+      ref: '32e59a0fcd80dfcfeb0a24fc21c650d644d9da2d' # Reviewed shared-template commit; update deliberately.
+stages:
+  - template: azure-pipelines/stages/build-deploy.yml@aksTemplates
+    parameters:
+      stageName: Application
+      buildServiceConnection: example-acr-build-federated
+      deployServiceConnection: example-aks-deploy-federated
+      buildEnvironment: image-build
+      environment: pprd
+      region: uks
+      clusterSlots: ${{ parameters.clusterSlots }}
+      deploySequentially: ${{ parameters.deploySequentially }}
+      configFile: delivery.gateway.apps.json
+      buildPool: {vmImage: ubuntu-24.04}
+      deployPool: {name: aks-private}

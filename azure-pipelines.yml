@@ -1,0 +1,87 @@
+# Azure Repos PR validation also needs a build-validation branch policy.
+trigger:
+  branches:
+    include: [main, develop]
+pr:
+  branches:
+    include: [main, develop]
+resources:
+  repositories:
+    - repository: aksTemplates
+      type: git
+      name: aks-delivery-templates
+      ref: 32e59a0fcd80dfcfeb0a24fc21c650d644d9da2d
+pool:
+  vmImage: ubuntu-24.04
+steps:
+  - checkout: self
+    path: s/app
+    persistCredentials: false
+  - checkout: aksTemplates
+    path: s/templates
+    persistCredentials: false
+  - task: UseNode@1
+    inputs:
+      version: 24.x
+  - bash: |
+      set -euo pipefail
+      npm ci --ignore-scripts --no-audit --no-fund
+      npm test
+      BUILD_REVISION="$SOURCE_COMMIT" npm run build
+    workingDirectory: $(Pipeline.Workspace)/s/app
+    env:
+      SOURCE_COMMIT: $(Build.SourceVersion)
+    displayName: Test application and release metadata
+  - bash: |
+      set -euo pipefail
+      python3 -m venv "$(Agent.TempDirectory)/validation-python"
+      "$(Agent.TempDirectory)/validation-python/bin/pip" install --require-hashes -r "$(Pipeline.Workspace)/s/templates/requirements.txt"
+      python3 "$(Pipeline.Workspace)/s/templates/scripts/install_tools.py" --directory "$(Agent.TempDirectory)/aks-tools"
+      export PATH="$(Agent.TempDirectory)/aks-tools:$PATH"
+      "$(Agent.TempDirectory)/validation-python/bin/python" -m unittest discover -s "$(Pipeline.Workspace)/s/app/tests" -p 'test_*.py' -v
+      "$(Agent.TempDirectory)/validation-python/bin/python" "$(Pipeline.Workspace)/s/templates/scripts/delivery.py" validate --source "$(Pipeline.Workspace)/s/app"
+      for profile in direct gateway; do
+        if [ "$profile" = gateway ]; then
+          config=delivery.gateway.apps.json
+          bootstrap=bootstrap.gateway.apps.json
+        else
+          config=delivery.apps.json
+          bootstrap=bootstrap.apps.json
+        fi
+        "$(Agent.TempDirectory)/validation-python/bin/python" "$(Pipeline.Workspace)/s/templates/scripts/delivery.py" validate --source "$(Pipeline.Workspace)/s/app" --config "$config"
+        for slot in aks01 aks02; do
+          "$(Agent.TempDirectory)/validation-python/bin/python" "$(Pipeline.Workspace)/s/templates/scripts/bootstrap.py" resolve --source "$(Pipeline.Workspace)/s/app" --config "$bootstrap" --environment pprd --region uks --slot "$slot"
+          "$(Agent.TempDirectory)/validation-python/bin/python" "$(Pipeline.Workspace)/s/templates/scripts/delivery.py" render --source "$(Pipeline.Workspace)/s/app" --config "$config" --commit "$SOURCE_COMMIT" --digest "sha256:$(printf '%064d' 0)" --environment pprd --region uks --slot "$slot" --output "$(Agent.TempDirectory)/rendered-$profile-$slot"
+        done
+      done
+    env:
+      SOURCE_COMMIT: $(Build.SourceVersion)
+    displayName: Validate overlays and shared two-slot rendering
+  - bash: |
+      set -euo pipefail
+      docker build --build-arg BUILD_REVISION="$SOURCE_COMMIT" --tag aks-platform-demo:ci .
+      container=$(docker run --detach --rm --read-only --cap-drop ALL --security-opt no-new-privileges --tmpfs /tmp:rw,noexec,nosuid,size=16m --publish 127.0.0.1:18080:8080 --env APP_SLOT=aks01 aks-platform-demo:ci)
+      trap 'docker rm -f "$container" >/dev/null 2>&1 || true' EXIT
+      for attempt in $(seq 1 30); do
+        if curl --fail --silent http://127.0.0.1:18080/readyz >/dev/null; then break; fi
+        sleep 1
+      done
+      node scripts/smoke.mjs --url http://127.0.0.1:18080 --host web.example.test --expected-slot aks01 --expected-revision "$SOURCE_COMMIT"
+    workingDirectory: $(Pipeline.Workspace)/s/app
+    env:
+      SOURCE_COMMIT: $(Build.SourceVersion)
+    displayName: Build and smoke-test container without cloud credentials
+  - bash: |
+      set -euo pipefail
+      command -v openssl
+      python3 "$(Pipeline.Workspace)/s/app/scripts/install_ci_tools.py" --directory "$(Agent.TempDirectory)/aks-tools"
+      export PATH="$(Agent.TempDirectory)/aks-tools:$PATH"
+      "$(Agent.TempDirectory)/validation-python/bin/python" "$(Pipeline.Workspace)/s/app/scripts/test_dual_cluster.py" --templates "$(Pipeline.Workspace)/s/templates" --report "$(Agent.TempDirectory)/dual-cluster-report.json"
+    displayName: Deploy, promote and roll back across two Kubernetes clusters
+  - task: PublishPipelineArtifact@1
+    condition: always()
+    continueOnError: true
+    inputs:
+      targetPath: $(Agent.TempDirectory)/dual-cluster-report.json
+      artifact: dual-cluster-acceptance
+    displayName: Retain Kubernetes acceptance evidence when available

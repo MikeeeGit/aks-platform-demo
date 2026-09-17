@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: platform-demo
+  annotations:
+    service.beta.kubernetes.io/azure-load-balancer-ipv4: "10.81.4.20"
+    service.beta.kubernetes.io/azure-load-balancer-internal-subnet: "uks-pprd-aks02"
+spec:
+  loadBalancerSourceRanges:
+    - 10.81.8.0/24
+    - 10.80.2.0/24

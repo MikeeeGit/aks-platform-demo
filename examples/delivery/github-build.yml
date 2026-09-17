@@ -1,0 +1,15 @@
+name: Private application image build
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  build:
+    # REPLACE both 40-zero pins with the same reviewed shared-template commit.
+    uses: MikeeeGit/aks-delivery-templates/.github/workflows/build.yml@32e59a0fcd80dfcfeb0a24fc21c650d644d9da2d
+    with:
+      template-ref: '32e59a0fcd80dfcfeb0a24fc21c650d644d9da2d'
+      client-id: ${{ vars.AZURE_ACR_BUILD_CLIENT_ID }}
+      config: delivery.gateway.apps.json
+      build-environment: image-build

@@ -1,0 +1,28 @@
+{
+  "kind": {
+    "version": "0.33.0",
+    "url": "https://github.com/kubernetes-sigs/kind/releases/download/v0.33.0/kind-linux-amd64",
+    "sha256": "aee6151561422756b764a4ae28e7f44cda5af5a9eead3cc9985112b1de8d8e0d"
+  },
+  "kind_node_image": "kindest/node:v1.35.8@sha256:07b2536e30b803ed61d1677a79df6115f798ce64c80f9e22f6ed45afd09323c0",
+  "registry_image": "registry:3@sha256:1be55279f18a2fe1a74edf2664cac61c1bea305b7b4642dab412e7affdcb3e33",
+  "envoy_gateway": {
+    "version": "1.9.1",
+    "chart": "oci://docker.io/envoyproxy/gateway-helm@sha256:91bae9aedb91ab34731e987afe01a3ccf454393015abeca705eea8ee15553e86",
+    "chart_sha256": "68ce74961eeb5fc5e395628d6bbed9305a85b34619bd7ee17b01187f101bb8c5",
+    "crds": [
+      {
+        "url": "https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.6.1/standard-install.yaml",
+        "sha256": "24d931f22abd8e40c973264319ead7cfa09d0fb7716b7ab1ee2ff174cb063a73"
+      },
+      {
+        "url": "https://github.com/envoyproxy/gateway/releases/download/v1.9.1/envoy-gateway-crds.yaml",
+        "sha256": "613fac22b8673735e97fd2523098974bd74cb0cc78e444602b3383d1217b8aab"
+      }
+    ],
+    "images": {
+      "envoyGateway": "docker.io/envoyproxy/gateway@sha256:0049bcb384c591c6a6dd043fe5c9929ef6e74f230e12dd678d2d3701df9b301e",
+      "envoyProxy": "docker.io/envoyproxy/envoy@sha256:eb2c01c13125d1629637cb4e4cce7207009fb7cc2c8027f9742758549d15b6f4"
+    }
+  }
+}

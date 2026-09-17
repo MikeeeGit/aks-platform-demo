@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: platform-demo
+spec:
+  replicas: null
+  template:
+    metadata:
+      labels:
+        azure.workload.identity/use: "true"
+    spec:
+      serviceAccountName: platform-demo
+      containers:
+        - name: app
+          volumeMounts:
+            - name: keyvault-tls
+              mountPath: /mnt/secrets-store
+              readOnly: true
+      volumes:
+        - name: keyvault-tls
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: platform-demo-tls

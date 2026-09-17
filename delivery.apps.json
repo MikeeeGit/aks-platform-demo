@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "registry": {
+    "name": "exampleplatformacr",
+    "login_server": "exampleplatformacr.azurecr.io",
+    "repository": "aks-platform-demo",
+    "subscription_id": "00000000-0000-0000-0000-000000000002"
+  },
+  "build": {
+    "context": ".",
+    "dockerfile": "Dockerfile",
+    "image_name": "aks-platform-demo"
+  },
+  "targets": [
+    {
+      "environment": "pprd",
+      "region": "uks",
+      "slot": "aks01",
+      "subscription_id": "00000000-0000-0000-0000-000000000003",
+      "resource_group": "uks-pprd-example-aks-rg",
+      "cluster_name": "uks-pprd-example-aks01",
+      "namespace": "platform-demo",
+      "deployment": "platform-demo",
+      "overlay": "deploy/overlays/pprd/uks/aks01",
+      "approval_environment": "pprd-uks-aks01",
+      "verification": {
+        "service": "platform-demo",
+        "port": 80,
+        "readiness_path": "/readyz",
+        "version_path": "/version"
+      }
+    },
+    {
+      "environment": "pprd",
+      "region": "uks",
+      "slot": "aks02",
+      "subscription_id": "00000000-0000-0000-0000-000000000003",
+      "resource_group": "uks-pprd-example-aks-rg",
+      "cluster_name": "uks-pprd-example-aks02",
+      "namespace": "platform-demo",
+      "deployment": "platform-demo",
+      "overlay": "deploy/overlays/pprd/uks/aks02",
+      "approval_environment": "pprd-uks-aks02",
+      "verification": {
+        "service": "platform-demo",
+        "port": 80,
+        "readiness_path": "/readyz",
+        "version_path": "/version"
+      }
+    }
+  ]
+}
