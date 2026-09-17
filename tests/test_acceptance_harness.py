@@ -1,5 +1,7 @@
 """Focused local acceptance-harness safeguards; these are not Kubernetes acceptance."""
 import hashlib
+import io
+from contextlib import redirect_stdout
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import importlib.util
 import json
@@ -71,6 +73,60 @@ class CheckOnlyTests(unittest.TestCase):
             self.assertTrue(calls)
             self.assertFalse(any("apply" in command or "patch" in command for command in calls))
             self.assertEqual(run.record["checks"], [])
+
+
+class DiagnosticTests(unittest.TestCase):
+    def test_controller_and_workload_evidence_precedes_cleanup_without_secret_reads(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            args = SimpleNamespace(artifacts=root/"artifacts", report=root/"report.json", kind="kind", kubectl="kubectl")
+            test = acceptance.Acceptance(args, root/"work")
+            test.clusters = ["aks-demo-test-aks01"]
+            calls = []
+            private_marker = "-----BEGIN PRIVATE KEY-----" + "sensitive" + "-----END PRIVATE KEY-----"
+            def kubectl(cluster, *arguments, **kwargs):
+                calls.append(("diagnostic", arguments))
+                self.assertEqual(kwargs["timeout"], 20)
+                if "events" in arguments:
+                    raise subprocess.TimeoutExpired(arguments, 20, output=b"partial event")
+                return "CrashLoopBackOff\\n" + private_marker
+            def remove(command, **kwargs):
+                calls.append(("delete", command))
+                return subprocess.CompletedProcess(command, 0)
+            log = io.StringIO()
+            with patch.object(test, "kubectl", side_effect=kubectl), patch.object(
+                    acceptance.subprocess, "run", side_effect=remove), redirect_stdout(log):
+                test.cleanup()
+            self.assertEqual(calls[-1][0], "delete")
+            self.assertTrue(all(c[0] == "diagnostic" for c in calls[:-1]))
+            arguments = [c[1] for c in calls[:-1]]
+            self.assertTrue(any("envoy-gateway-system" in c and "logs" in c and "control-plane=envoy-gateway" in c for c in arguments))
+            self.assertTrue(any("--previous=true" in c for c in arguments))
+            self.assertTrue(any("platform-demo" in c and "describe" in c for c in arguments))
+            self.assertFalse(any("secrets" in " ".join(c) or "configmaps" in " ".join(c) for c in arguments))
+            self.assertIn("CrashLoopBackOff", log.getvalue())
+            self.assertNotIn("sensitive", log.getvalue())
+            self.assertIn("REDACTED PRIVATE KEY", log.getvalue())
+            self.assertIn("partial event", log.getvalue())
+            files = list(test.artifacts.glob("*.txt"))
+            self.assertEqual(len(files), 11)
+            self.assertTrue(all("sensitive" not in p.read_text() for p in files))
+            report = json.loads(args.report.read_text())
+            self.assertEqual(report["result"], "failed")
+            self.assertEqual(len(report["diagnostics"]), 11)
+            self.assertEqual(sum(not d["collected"] for d in report["diagnostics"]), 2)
+
+    def test_diagnostic_storage_failure_does_not_skip_cluster_cleanup(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            args = SimpleNamespace(artifacts=root/"artifacts", report=root/"report.json", kind="kind", kubectl="kubectl")
+            test = acceptance.Acceptance(args, root/"work")
+            test.clusters = ["aks-demo-test-aks01"]
+            with patch.object(test, "collect_diagnostics", side_effect=OSError("storage unavailable")), patch.object(
+                    acceptance.subprocess, "run") as remove:
+                test.cleanup()
+            self.assertEqual(remove.call_count, 1)
+            self.assertEqual(json.loads(args.report.read_text())["diagnostic_error"], "storage unavailable")
 
 
 class CleanupTests(unittest.TestCase):

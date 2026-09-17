@@ -111,7 +111,7 @@ def prepare_files(test, run):
     values = {"crds": {"enabled": False}, "config": {"envoyGateway": {
         "provider": {"type": "Kubernetes", "kubernetes": {
             "deploy": {"type": "GatewayNamespace"},
-            "watch": {"type": "Namespaces", "namespaces": [NAMESPACE]}}}}}}
+            "watch": {"type": "Namespaces", "namespaces": [NAMESPACE, "envoy-gateway-system"]}}}}}}
     for key, value in pins.get("images", {}).items():
         values.setdefault("global", {}).setdefault("images", {})[key] = {"image": value}
     (directory / "values.yaml").write_text(yaml.safe_dump(values))

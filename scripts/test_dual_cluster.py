@@ -260,17 +260,66 @@ class Acceptance:
         self.check_release(self.clusters[0], "aks01", self.original_commit, first, "active-slot-unchanged")
         self.record["result"] = "passed"
 
+    def collect_diagnostics(self):
+        """Capture bounded, non-secret resource status before deleting test clusters."""
+        self.record.setdefault("diagnostics", [])
+        for cluster in self.clusters:
+            for namespace in ("envoy-gateway-system", "platform-demo"):
+                commands = [
+                    ("resources", ["get", "pods,deployments,replicasets,jobs,services,endpointslices", "-o", "wide"]),
+                    ("pod-describe", ["describe", "pods"]),
+                    ("deployment-describe", ["describe", "deployments"]),
+                    ("events", ["get", "events", "--sort-by=.lastTimestamp"]),
+                ]
+                if namespace == "envoy-gateway-system":
+                    for previous in (False, True):
+                        commands.append(("logs-previous" if previous else "logs-current",
+                            ["logs", "-l", "control-plane=envoy-gateway", "--all-containers=true",
+                             "--prefix=true", "--tail=200", "--max-log-requests=5",
+                             "--ignore-errors=true", "--pod-running-timeout=5s"] +
+                            (["--previous=true"] if previous else [])))
+                else:
+                    commands.append(("gateway-status", [
+                        "get", "gateways.gateway.networking.k8s.io,httproutes.gateway.networking.k8s.io,"
+                        "envoyproxies.gateway.envoyproxy.io,clienttrafficpolicies.gateway.envoyproxy.io",
+                        "-o", "json"]))
+                for label, arguments in commands:
+                    filename = cluster + "-" + namespace + "-" + label + ".txt"
+                    success = True
+                    try:
+                        output = self.kubectl(cluster, "-n", namespace, *arguments,
+                                              capture=True, timeout=20)
+                    except (OSError, subprocess.SubprocessError) as error:
+                        success = False
+                        output = "Diagnostic command failed: " + str(error)
+                        if isinstance(error, subprocess.TimeoutExpired) and error.stdout:
+                            output += "\n" + (error.stdout.decode(errors="replace")
+                                               if isinstance(error.stdout, bytes) else error.stdout)
+                    # No Secrets/configmaps/kubeconfigs are requested. Redact defensive
+                    # credential markers in logs before either persistence or display.
+                    output = re.sub(r"-----BEGIN (?:[A-Z ]+)?PRIVATE KEY-----.*?"
+                                    r"-----END (?:[A-Z ]+)?PRIVATE KEY-----",
+                                    "[REDACTED PRIVATE KEY]", output, flags=re.DOTALL)
+                    output = re.sub(r"(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{50,})",
+                                    "[REDACTED TOKEN]", output)
+                    truncated = len(output) > 200_000
+                    if truncated:
+                        output = output[:200_000] + "\n[diagnostic output truncated]"
+                    (self.artifacts / filename).write_text(output + "\n")
+                    self.record["diagnostics"].append({"file": filename, "collected": success,
+                                                       "truncated": truncated})
+                    print("=== " + filename + " ===", flush=True)
+                    print(output, flush=True)
+
     def cleanup(self):
         if self.record["result"] == "running":
             self.record["result"] = "failed"
         if self.record["result"] != "passed":
-            for cluster in self.clusters:
-                try:
-                    diagnostics = self.kubectl(cluster, "-n", "platform-demo", "get",
-                                               "pods,deployments,services,events", "-o", "wide", capture=True, timeout=20)
-                    (self.artifacts / (cluster + "-diagnostics.txt")).write_text(diagnostics)
-                except (OSError, subprocess.SubprocessError):
-                    pass
+            try:
+                self.collect_diagnostics()
+            except OSError as error:
+                self.record["diagnostic_error"] = str(error)
+                print("Could not retain all diagnostics: " + str(error), file=sys.stderr)
         cleanup_commands = [[self.args.kind, "delete", "cluster", "--name", cluster,
                              "--kubeconfig", str(self.kubeconfig)] for cluster in reversed(self.clusters)]
         if self.registry_created:
