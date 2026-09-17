@@ -55,7 +55,7 @@ jobs:
             fi
             "$RUNNER_TEMP/validation-python/bin/python" templates/scripts/delivery.py validate --source app --config "$config"
             for slot in aks01 aks02; do
-              "$RUNNER_TEMP/validation-python/bin/python" templates/scripts/bootstrap.py resolve --source app --config "$bootstrap" --environment pprd --region uks --slot "$slot"
+              "$RUNNER_TEMP/validation-python/bin/python" templates/scripts/bootstrap.py resolve --source app --config "$config" --bootstrap-config "$bootstrap" --environment pprd --region uks --slot "$slot"
               "$RUNNER_TEMP/validation-python/bin/python" templates/scripts/delivery.py render --source app --config "$config" --commit "$GITHUB_SHA" --digest "sha256:$(printf '%064d' 0)" --environment pprd --region uks --slot "$slot" --output "$RUNNER_TEMP/rendered-$profile-$slot"
             done
           done

@@ -50,7 +50,7 @@ steps:
         fi
         "$(Agent.TempDirectory)/validation-python/bin/python" "$(Pipeline.Workspace)/s/templates/scripts/delivery.py" validate --source "$(Pipeline.Workspace)/s/app" --config "$config"
         for slot in aks01 aks02; do
-          "$(Agent.TempDirectory)/validation-python/bin/python" "$(Pipeline.Workspace)/s/templates/scripts/bootstrap.py" resolve --source "$(Pipeline.Workspace)/s/app" --config "$bootstrap" --environment pprd --region uks --slot "$slot"
+          "$(Agent.TempDirectory)/validation-python/bin/python" "$(Pipeline.Workspace)/s/templates/scripts/bootstrap.py" resolve --source "$(Pipeline.Workspace)/s/app" --config "$config" --bootstrap-config "$bootstrap" --environment pprd --region uks --slot "$slot"
           "$(Agent.TempDirectory)/validation-python/bin/python" "$(Pipeline.Workspace)/s/templates/scripts/delivery.py" render --source "$(Pipeline.Workspace)/s/app" --config "$config" --commit "$SOURCE_COMMIT" --digest "sha256:$(printf '%064d' 0)" --environment pprd --region uks --slot "$slot" --output "$(Agent.TempDirectory)/rendered-$profile-$slot"
         done
       done
