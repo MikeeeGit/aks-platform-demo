@@ -29,9 +29,9 @@ permissions:
 jobs:
   promote:
     # REPLACE both 40-zero pins with the same reviewed shared-template commit.
-    uses: MikeeeGit/aks-delivery-templates/.github/workflows/promote.yml@32e59a0fcd80dfcfeb0a24fc21c650d644d9da2d
+    uses: MikeeeGit/aks-delivery-templates/.github/workflows/promote.yml@13b9f32dcae343e183e64dcd655a97feda21929a
     with:
-      template-ref: '32e59a0fcd80dfcfeb0a24fc21c650d644d9da2d'
+      template-ref: '13b9f32dcae343e183e64dcd655a97feda21929a'
       build-run-id: ${{ inputs.build-run-id }}
       build-workflow: ${{ inputs.build-workflow }}
       client-id: ${{ vars.AZURE_AKS_DEPLOY_CLIENT_ID }}

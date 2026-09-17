@@ -21,7 +21,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: MikeeeGit/aks-delivery-templates
-          ref: 32e59a0fcd80dfcfeb0a24fc21c650d644d9da2d
+          ref: 13b9f32dcae343e183e64dcd655a97feda21929a
           path: templates
           persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -77,12 +77,12 @@ jobs:
           command -v openssl
           python3 app/scripts/install_ci_tools.py --directory "$RUNNER_TEMP/aks-tools"
           export PATH="$RUNNER_TEMP/aks-tools:$PATH"
-          "$RUNNER_TEMP/validation-python/bin/python" app/scripts/test_dual_cluster.py --templates "$GITHUB_WORKSPACE/templates" --report "$RUNNER_TEMP/dual-cluster-report.json"
+          "$RUNNER_TEMP/validation-python/bin/python" app/scripts/test_dual_cluster.py --templates "$GITHUB_WORKSPACE/templates" --report "$RUNNER_TEMP/dual-cluster-evidence/report.json" --artifacts "$RUNNER_TEMP/dual-cluster-evidence/diagnostics"
       - name: Retain Kubernetes acceptance evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: dual-cluster-acceptance
-          path: ${{ runner.temp }}/dual-cluster-report.json
+          path: ${{ runner.temp }}/dual-cluster-evidence/
           if-no-files-found: ignore
           retention-days: 14

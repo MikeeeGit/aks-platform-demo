@@ -10,7 +10,7 @@ resources:
     - repository: aksTemplates
       type: git
       name: aks-delivery-templates
-      ref: 32e59a0fcd80dfcfeb0a24fc21c650d644d9da2d
+      ref: 13b9f32dcae343e183e64dcd655a97feda21929a
 pool:
   vmImage: ubuntu-24.04
 steps:
@@ -76,12 +76,12 @@ steps:
       command -v openssl
       python3 "$(Pipeline.Workspace)/s/app/scripts/install_ci_tools.py" --directory "$(Agent.TempDirectory)/aks-tools"
       export PATH="$(Agent.TempDirectory)/aks-tools:$PATH"
-      "$(Agent.TempDirectory)/validation-python/bin/python" "$(Pipeline.Workspace)/s/app/scripts/test_dual_cluster.py" --templates "$(Pipeline.Workspace)/s/templates" --report "$(Agent.TempDirectory)/dual-cluster-report.json"
+      "$(Agent.TempDirectory)/validation-python/bin/python" "$(Pipeline.Workspace)/s/app/scripts/test_dual_cluster.py" --templates "$(Pipeline.Workspace)/s/templates" --report "$(Agent.TempDirectory)/dual-cluster-evidence/report.json" --artifacts "$(Agent.TempDirectory)/dual-cluster-evidence/diagnostics"
     displayName: Deploy, promote and roll back across two Kubernetes clusters
   - task: PublishPipelineArtifact@1
     condition: always()
     continueOnError: true
     inputs:
-      targetPath: $(Agent.TempDirectory)/dual-cluster-report.json
+      targetPath: $(Agent.TempDirectory)/dual-cluster-evidence
       artifact: dual-cluster-acceptance
     displayName: Retain Kubernetes acceptance evidence when available

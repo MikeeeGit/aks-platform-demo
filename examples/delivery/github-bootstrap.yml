@@ -14,9 +14,9 @@ permissions:
 jobs:
   bootstrap:
     # REPLACE both 40-zero pins with the same reviewed shared-template commit.
-    uses: MikeeeGit/aks-delivery-templates/.github/workflows/bootstrap.yml@32e59a0fcd80dfcfeb0a24fc21c650d644d9da2d
+    uses: MikeeeGit/aks-delivery-templates/.github/workflows/bootstrap.yml@13b9f32dcae343e183e64dcd655a97feda21929a
     with:
-      template-ref: '32e59a0fcd80dfcfeb0a24fc21c650d644d9da2d'
+      template-ref: '13b9f32dcae343e183e64dcd655a97feda21929a'
       config: delivery.gateway.apps.json
       bootstrap-config: bootstrap.gateway.apps.json
       environment: pprd
