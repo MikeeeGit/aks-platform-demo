@@ -10,7 +10,7 @@ resources:
     - repository: aksTemplates
       type: git
       name: aks-delivery-templates
-      ref: 13b9f32dcae343e183e64dcd655a97feda21929a
+      ref: 02a8faecc3dfd1a0c3b4f9c0e0bdfbc53057ed7c
 pool:
   vmImage: ubuntu-24.04
 steps:
@@ -85,3 +85,15 @@ steps:
       targetPath: $(Agent.TempDirectory)/dual-cluster-evidence
       artifact: dual-cluster-acceptance
     displayName: Retain Kubernetes acceptance evidence when available
+  - bash: |
+      set -euo pipefail
+      export PATH="$(Agent.TempDirectory)/aks-tools:$PATH"
+      "$(Agent.TempDirectory)/validation-python/bin/python" "$(Pipeline.Workspace)/s/app/scripts/test_argocd_dual_cluster.py" --templates "$(Pipeline.Workspace)/s/templates" --report "$(Agent.TempDirectory)/argocd-evidence/report.json" --artifacts "$(Agent.TempDirectory)/argocd-evidence/diagnostics"
+    displayName: Argo CD dual-cluster GitOps acceptance
+  - task: PublishPipelineArtifact@1
+    condition: always()
+    continueOnError: true
+    inputs:
+      targetPath: $(Agent.TempDirectory)/argocd-evidence
+      artifact: argocd-dual-cluster-acceptance
+    displayName: Retain Argo CD acceptance evidence when available
