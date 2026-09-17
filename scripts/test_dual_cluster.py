@@ -15,12 +15,13 @@ from pathlib import Path
 import re
 import selectors
 import signal
+import socket
 import shutil
 import subprocess
 import sys
 import tempfile
 import time
-from urllib.request import Request, urlopen
+from urllib.request import Request, urlopen, build_opener, ProxyHandler
 import uuid
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -44,6 +45,29 @@ def pinned_image(value):
     if not isinstance(value, str) or "@sha256:" not in value or not DIGEST.fullmatch(value.rsplit("@", 1)[1]):
         raise ValueError("Every test infrastructure image must be pinned by sha256.")
     return value
+
+
+def available_loopback_port():
+    # Docker receives an explicit binding, avoiding dynamic publication changes
+    # when another network is attached. A rare bind race fails the Docker command.
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as reservation:
+        reservation.bind(("127.0.0.1", 0))
+        return reservation.getsockname()[1]
+
+
+def registry_port(inspection):
+    state = inspection["state"]
+    if not state.get("Running"):
+        raise RuntimeError("Test registry is not running: " + str(state.get("Status")) +
+                           " (exit " + str(state.get("ExitCode")) + ")")
+    bindings = inspection.get("ports", {}).get("5000/tcp") or []
+    matches = [value for value in bindings if value.get("HostIp") == "127.0.0.1"]
+    if len(bindings) != 1 or len(matches) != 1:
+        raise ValueError("Registry must have exactly one IPv4 loopback-only publication.")
+    port = int(matches[0]["HostPort"])
+    if not 1 <= port <= 65535:
+        raise ValueError("Invalid registry host port.")
+    return port
 
 
 def registry_digest(port, repository, tag):
@@ -116,6 +140,33 @@ class Acceptance:
         return run([self.args.kubectl, "--kubeconfig", self.kubeconfig,
                     "--context", "kind-" + cluster, *args], **kwargs)
 
+    def wait_registry(self, stage):
+        """Refresh the published endpoint and verify registry API before long work."""
+        deadline = time.monotonic() + 30
+        opener = build_opener(ProxyHandler({}))
+        while True:
+            inspection = json.loads(run(
+                ["docker", "inspect", "--format",
+                 '{"state":{{json .State}},"ports":{{json .NetworkSettings.Ports}}}', self.registry],
+                capture=True, timeout=10))
+            self.port = registry_port(inspection)
+            if self.port != self.registry_requested_port:
+                raise RuntimeError("Docker changed the explicitly requested registry publication.")
+            try:
+                with opener.open(f"http://127.0.0.1:{self.port}/v2/", timeout=3) as response:
+                    body = response.read(1025)
+                    if response.status != 200 or json.loads(body) != {}:
+                        raise ValueError("Registry /v2/ did not return the expected successful API response.")
+                self.record.setdefault("registry_checks", []).append({
+                    "stage": stage, "address": "127.0.0.1", "port": self.port,
+                    "container_status": inspection["state"].get("Status"), "api_ready": True})
+                print("Registry ready: " + stage + " 127.0.0.1:" + str(self.port), flush=True)
+                return
+            except (OSError, ValueError) as error:
+                if time.monotonic() >= deadline:
+                    raise TimeoutError("Registry API readiness failed at " + stage + ": " + str(error)) from error
+                time.sleep(0.5)
+
     def prepare(self):
         for tool in ("docker", "git", "node", "openssl", self.args.kind, self.args.kubectl, self.args.helm):
             if not shutil.which(str(tool)):
@@ -149,11 +200,12 @@ class Acceptance:
         self.original_commit = run(["git", "-C", self.fixture, "rev-parse", "HEAD"], capture=True)
         self.record["fixture_changes"] = ["Replace Azure CSI mount with temporary local TLS Secret",
                                          "Use local Gateway ClusterIP transport", "Temporary public CA trust"]
-        run(["docker", "run", "-d", "--name", self.registry, "--publish", "127.0.0.1::5000",
-             self.pins["registry_image"]])
+        self.registry_requested_port = available_loopback_port()
+        # Track even a partially created container if Docker fails during binding.
         self.registry_created = True
-        address = run(["docker", "port", self.registry, "5000/tcp"], capture=True)
-        self.port = int(address.rsplit(":", 1)[1])
+        run(["docker", "run", "-d", "--name", self.registry, "--publish",
+             f"127.0.0.1:{self.registry_requested_port}:5000", self.pins["registry_image"]])
+        self.wait_registry("initial-publication")
         for slot in ("aks01", "aks02"):
             cluster = self.prefix + "-" + slot
             # Track before create so a partially created cluster is also cleaned.
@@ -172,6 +224,7 @@ class Acceptance:
                 run(["docker", "exec", "-i", node, "cp", "/dev/stdin", directory + "/hosts.toml"], input=hosts)
             if len(self.clusters) == 1:
                 run(["docker", "network", "connect", "kind", self.registry])
+                self.wait_registry("after-kind-network-connect")
             self.kubectl(cluster, "apply", "-f", self.fixture / "deploy/bootstrap/namespace.yaml")
             deadline = time.monotonic() + 60
             while True:
@@ -185,12 +238,14 @@ class Acceptance:
             gateway.install(self, cluster, run)
 
     def build(self, commit, tag):
+        self.wait_registry("before-build-" + tag)
         # Match the IPv4-only Docker publication; localhost can resolve to ::1.
         image = f"127.0.0.1:{self.port}/aks-platform-demo:{self.prefix}-{tag}"
         self.image_tags.append(image)
         run(["docker", "build", "--build-arg", "BUILD_REVISION=" + commit,
              "--label", "org.opencontainers.image.revision=" + commit,
              "--tag", image, self.fixture], timeout=900)
+        self.wait_registry("before-push-" + tag)
         run(["docker", "push", image], timeout=300)
         digest = registry_digest(self.port, "aks-platform-demo", self.prefix + "-" + tag)
         self.record["releases"].append({"source_commit": commit, "image_digest": digest})
@@ -264,6 +319,26 @@ class Acceptance:
     def collect_diagnostics(self):
         """Capture bounded, non-secret resource status before deleting test clusters."""
         self.record.setdefault("diagnostics", [])
+        if self.registry_created:
+            commands = [
+                ("registry-state", ["docker", "inspect", "--format",
+                 '{"state":{{json .State}},"ports":{{json .NetworkSettings.Ports}}}', self.registry]),
+                ("registry-logs", ["docker", "logs", "--tail", "200", "--timestamps", self.registry]),
+            ]
+            for label, command in commands:
+                try:
+                    result = subprocess.run(command, text=True, stdout=subprocess.PIPE,
+                                            stderr=subprocess.STDOUT, timeout=20, check=False)
+                    raw_output, success = result.stdout or "", result.returncode == 0
+                except (OSError, subprocess.SubprocessError) as error:
+                    raw_output, success = "Registry diagnostic failed: " + str(error), False
+                output = raw_output[:200_000]
+                filename = self.registry + "-" + label + ".txt"
+                (self.artifacts / filename).write_text(output + "\n")
+                self.record["diagnostics"].append({"file": filename, "collected": success,
+                                                   "truncated": len(raw_output) > 200_000})
+                print("=== " + filename + " ===", flush=True)
+                print(output, flush=True)
         for cluster in self.clusters:
             for namespace in ("envoy-gateway-system", "platform-demo"):
                 commands = [

@@ -29,7 +29,7 @@ class RegistryDigestTests(unittest.TestCase):
                 self.send_response(200)
                 self.send_header("Docker-Content-Digest", owner.digest)
                 self.end_headers()
-                self.wfile.write(owner.body)
+                self.wfile.write(b"{}" if self.path == "/v2/" else owner.body)
             def log_message(self, *args):
                 pass
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), Registry)
@@ -54,6 +54,45 @@ class RegistryDigestTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             acceptance.pinned_image("registry:latest")
         self.assertEqual(acceptance.pinned_image("registry:3@" + self.digest), "registry:3@" + self.digest)
+
+
+class RegistryReadinessTests(unittest.TestCase):
+    setUp = RegistryDigestTests.setUp
+    tearDown = RegistryDigestTests.tearDown
+
+    def test_real_registry_api_is_checked_against_fresh_ipv4_mapping(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            args = SimpleNamespace(artifacts=root/"artifacts", report=None, kind="kind", kubectl="kubectl")
+            test = acceptance.Acceptance(args, root/"work")
+            test.registry_requested_port = self.server.server_port
+            inspection = {"state":{"Running":True,"Status":"running","ExitCode":0},
+                          "ports":{"5000/tcp":[{"HostIp":"127.0.0.1","HostPort":str(self.server.server_port)}]}}
+            with patch.object(acceptance, "run", return_value=json.dumps(inspection)) as inspect, redirect_stdout(io.StringIO()):
+                test.wait_registry("initial-publication")
+                test.wait_registry("after-kind-network-connect")
+            self.assertEqual(inspect.call_count,2)
+            self.assertTrue(all(call.args[0][:2] == ["docker","inspect"] for call in inspect.call_args_list))
+            self.assertEqual([x["stage"] for x in test.record["registry_checks"]],
+                             ["initial-publication","after-kind-network-connect"])
+            self.assertTrue(all(x["api_ready"] for x in test.record["registry_checks"]))
+
+    def test_changed_publication_is_rejected_before_push(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            args = SimpleNamespace(artifacts=root/"artifacts", report=None, kind="kind", kubectl="kubectl")
+            test = acceptance.Acceptance(args, root/"work")
+            test.registry_requested_port = 12345
+            inspection={"state":{"Running":True},"ports":{"5000/tcp":[{"HostIp":"127.0.0.1","HostPort":"12346"}]}}
+            with patch.object(acceptance,"run",return_value=json.dumps(inspection)):
+                with self.assertRaisesRegex(RuntimeError,"changed the explicitly requested"):
+                    test.wait_registry("after-kind-network-connect")
+
+    def test_exited_or_externally_exposed_registry_is_rejected(self):
+        with self.assertRaisesRegex(RuntimeError,"not running"):
+            acceptance.registry_port({"state":{"Running":False,"Status":"exited","ExitCode":1},"ports":{}})
+        with self.assertRaisesRegex(ValueError,"loopback-only"):
+            acceptance.registry_port({"state":{"Running":True},"ports":{"5000/tcp":[{"HostIp":"0.0.0.0","HostPort":"12345"}]}})
 
 
 class CheckOnlyTests(unittest.TestCase):
@@ -115,6 +154,29 @@ class DiagnosticTests(unittest.TestCase):
             self.assertEqual(report["result"], "failed")
             self.assertEqual(len(report["diagnostics"]), 11)
             self.assertEqual(sum(not d["collected"] for d in report["diagnostics"]), 2)
+
+    def test_registry_state_timeout_still_captures_logs_and_removes_container(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            args = SimpleNamespace(artifacts=root/"artifacts", report=root/"report.json", kind="kind", kubectl="kubectl")
+            test = acceptance.Acceptance(args, root/"work")
+            test.registry_created = True
+            calls=[]
+            def docker(command, **kwargs):
+                calls.append(command)
+                if command[1] == "inspect":
+                    self.assertIn("NetworkSettings.Ports",command[3])
+                    self.assertNotIn("Config.Env",command[3])
+                    raise subprocess.TimeoutExpired(command,20)
+                return subprocess.CompletedProcess(command,0,stdout="registry listening on :5000")
+            with patch.object(acceptance.subprocess,"run",side_effect=docker), redirect_stdout(io.StringIO()):
+                test.cleanup()
+            self.assertEqual([x[1] for x in calls],["inspect","logs","rm"])
+            report=json.loads(args.report.read_text())
+            self.assertEqual(report["result"],"failed")
+            self.assertEqual([x["collected"] for x in report["diagnostics"]],[False,True])
+            log=next(test.artifacts.glob("*registry-logs.txt")).read_text()
+            self.assertIn("registry listening",log)
 
     def test_diagnostic_storage_failure_does_not_skip_cluster_cleanup(self):
         with tempfile.TemporaryDirectory() as temp:
