@@ -185,7 +185,8 @@ class Acceptance:
             gateway.install(self, cluster, run)
 
     def build(self, commit, tag):
-        image = f"localhost:{self.port}/aks-platform-demo:{self.prefix}-{tag}"
+        # Match the IPv4-only Docker publication; localhost can resolve to ::1.
+        image = f"127.0.0.1:{self.port}/aks-platform-demo:{self.prefix}-{tag}"
         self.image_tags.append(image)
         run(["docker", "build", "--build-arg", "BUILD_REVISION=" + commit,
              "--label", "org.opencontainers.image.revision=" + commit,
