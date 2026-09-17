@@ -36,7 +36,7 @@ The test-only containerd configuration maps the synthetic registry hostname to t
 
 The isolated source fixture replaces Azure CSI mounting with an explicitly local TLS Secret and commits only a public test CA, never private keys. Its Gateway data plane uses ClusterIP transport instead of an Azure ILB. The report records public source and fixture revisions separately. The same real app HTTPRoute and controller process handle TLS requests through port-forwarding. A passing report establishes only local Kubernetes/controller/TLS deployment, update and rollback; it does not establish Azure ILB allocation, AKS identity/RBAC, production CNI NetworkPolicy enforcement, registry/private network access, DNS, Key Vault or Application Gateway/WAF behavior.
 
-An incomplete run or cleanup failure produces a failed report and nonzero status. No Docker daemon is available in the current local authoring environment, so hosted acceptance execution is required before claiming this harness has passed.
+An incomplete run or cleanup failure produces a failed report and nonzero status. GitHub Actions and Azure Pipelines run this harness on isolated, Docker-capable hosted workers and retain the JSON report. Only a completed successful report with no cleanup errors counts as acceptance evidence. The retained diagnostics include bounded port-forward output and selected resource/controller status; temporary certificate private keys and kubecredentials are excluded. Positive HTTPS, unmatched HTTP Host and wrong-SNI checks use separate tunnels so an intentional TLS rejection cannot invalidate the next probe.
 
 ## Live platform qualification
 
