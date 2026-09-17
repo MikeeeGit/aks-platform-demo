@@ -14,6 +14,9 @@ import os
 from pathlib import Path
 import re
 import selectors
+import threading
+import queue
+from collections import deque
 import signal
 import socket
 import shutil
@@ -84,41 +87,62 @@ def registry_digest(port, repository, tag):
 
 
 @contextmanager
-def service_forward(kubectl, kubeconfig, context, *, service="platform-demo", remote_port=80):
+def service_forward(kubectl, kubeconfig, context, *, service="platform-demo", remote_port=80,
+                    diagnostics_dir=None):
     process = subprocess.Popen(
         [str(kubectl), "--kubeconfig", str(kubeconfig), "--context", context,
          "-n", "platform-demo", "port-forward", "--address", "127.0.0.1",
          "service/" + service, "0:" + str(remote_port)],
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
     )
+    tail, startup = deque(maxlen=80), queue.Queue()
+    def read_output():
+        for line in process.stdout:
+            line = line[:4096].rstrip()
+            tail.append(line)
+            found = re.search(r"Forwarding from 127\.0\.0\.1:(\d+)", line)
+            if found:
+                startup.put(int(found[1]))
+    reader = threading.Thread(target=read_output, daemon=True)
+    reader.start()
+    failed = False
     try:
-        selector = selectors.DefaultSelector()
-        selector.register(process.stdout, selectors.EVENT_READ)
         deadline = time.monotonic() + 30
         port = None
         while time.monotonic() < deadline:
-            if process.poll() is not None:
-                raise RuntimeError("Service port-forward exited before becoming ready.")
-            for key, _ in selector.select(timeout=0.5):
-                line = key.fileobj.readline()
-                found = re.search(r"Forwarding from 127\.0\.0\.1:(\d+)", line)
-                if found:
-                    port = int(found[1])
-                    break
-            if port:
+            try:
+                port = startup.get(timeout=0.2)
                 break
-        selector.close()
+            except queue.Empty:
+                if process.poll() is not None:
+                    raise RuntimeError("Service port-forward exited before becoming ready.")
         if not port:
             raise TimeoutError("Service port-forward did not become ready.")
+        print(f"Forward ready: {context} service/{service}:{remote_port} -> 127.0.0.1:{port}", flush=True)
         yield f"http://127.0.0.1:{port}"
+    except BaseException:
+        failed = True
+        raise
     finally:
-        process.terminate()
+        natural_exit = process.poll()
+        if natural_exit is None:
+            process.terminate()
         try:
             process.wait(timeout=5)
         except subprocess.TimeoutExpired:
             process.kill()
             process.wait(timeout=5)
+        reader.join(timeout=5)
         process.stdout.close()
+        content = (f"context={context} service={service} remote_port={remote_port}\n"
+                   f"request_failed={failed} exit_before_cleanup={natural_exit}\n" +
+                   "\n".join(tail) + "\n")
+        # kubectl forwarding diagnostics contain addresses/status, never manifests or TLS material.
+        if diagnostics_dir is not None:
+            filename = f"{context}-{service}-{remote_port}-forward-{uuid.uuid4().hex[:8]}.txt"
+            (Path(diagnostics_dir) / filename).write_text(content)
+        if failed or natural_exit is not None:
+            print("Port-forward diagnostic:\n" + content, flush=True)
 
 
 class Acceptance:
@@ -278,7 +302,8 @@ class Acceptance:
         actual = deployment["spec"]["template"]["spec"]["containers"][0]["image"]
         if actual != MIRROR_NAME + "/aks-platform-demo@" + digest:
             raise ValueError("Cluster Deployment is not using the selected immutable image.")
-        with service_forward(self.args.kubectl, self.kubeconfig, "kind-" + cluster) as url:
+        with service_forward(self.args.kubectl, self.kubeconfig, "kind-" + cluster,
+                             diagnostics_dir=self.artifacts) as url:
             for path, host in (("", "web.example.test"), ("/api", "api.example.test")):
                 run(["node", ROOT / "scripts/smoke.mjs", "--url", url + path, "--host", host,
                      "--expected-slot", slot, "--expected-revision", commit], timeout=30)

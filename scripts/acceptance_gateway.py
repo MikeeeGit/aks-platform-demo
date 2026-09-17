@@ -177,25 +177,28 @@ def check(test, cluster, slot, commit, forward):
         cluster, "-n", NAMESPACE, "get", "services", "-l", SELECTOR, "-o", "json", capture=True))["items"]
     if len(services) != 1:
         raise ValueError("Expected exactly one selected Gateway proxy Service.")
-    with forward(test.args.kubectl, test.kubeconfig, "kind-" + cluster,
-                 service=services[0]["metadata"]["name"], remote_port=443) as url:
+    service = services[0]["metadata"]["name"]
+    def tunnel():
+        return forward(test.args.kubectl, test.kubeconfig, "kind-" + cluster,
+                       service=service, remote_port=443, diagnostics_dir=test.artifacts)
+    # Rejected SNI can close a kubectl transport. Never reuse its tunnel for
+    # subsequent assertions, or mistake a dead local listener for route rejection.
+    with tunnel() as url:
         port = int(url.rsplit(":", 1)[1])
         for host, prefix in (("web.example.test", ""), ("api.example.test", "/api")):
             for endpoint, expected in (("healthz", "ok"), ("readyz", "ready"), ("version", None)):
-                data = https_json(port, host, prefix + "/" + endpoint, test.ca_file)
+                path = prefix + "/" + endpoint
+                print(f"Gateway HTTPS check: {slot} {host}{path}", flush=True)
+                data = https_json(port, host, path, test.ca_file)
                 if expected is not None and data.get("status") != expected:
                     raise ValueError("Gateway application health response mismatch.")
                 if expected is None and (data.get("slot") != slot or data.get("revision") != commit or
                                          data.get("application") != "aks-platform-demo"):
                     raise ValueError("Gateway selected slot/revision mismatch.")
-        # A certificate for the wrong name must never pass a 'smoke' test.
-        try:
-            https_json(port, "untrusted.example.test", "/version", test.ca_file)
-        except (ssl.SSLError, ConnectionError):
-            # An unmatched SNI may be rejected before a certificate is sent.
-            pass
-        else:
-            raise ValueError("Gateway accepted an unexpected certificate hostname.")
+                print(f"PASS Gateway HTTPS: {slot} {host}{path}", flush=True)
+    with tunnel() as url:
+        port = int(url.rsplit(":", 1)[1])
+        print(f"Gateway negative Host check: {slot}", flush=True)
         try:
             https_json(port, "web.example.test", "/version", test.ca_file,
                        request_host="unmatched.example.test")
@@ -204,6 +207,17 @@ def check(test, cluster, slot, commit, forward):
                 raise
         else:
             raise ValueError("Gateway accepted an unmatched HTTP Host.")
+    with tunnel() as url:
+        port = int(url.rsplit(":", 1)[1])
+        print(f"Gateway negative SNI check: {slot}", flush=True)
+        try:
+            https_json(port, "untrusted.example.test", "/version", test.ca_file)
+        except (ssl.SSLError, ConnectionResetError):
+            # An unmatched SNI may be rejected before a certificate is sent.
+            # ConnectionRefusedError is intentionally not an accepted rejection.
+            pass
+        else:
+            raise ValueError("Gateway accepted an unexpected certificate hostname.")
     return {"gateway_generation": gateway["metadata"]["generation"],
             "route_generation": route["metadata"]["generation"],
             "https_hosts": ["web.example.test", "api.example.test"],

@@ -7,6 +7,8 @@ import importlib.util
 import json
 from pathlib import Path
 import subprocess
+import socket
+import sys
 import tempfile
 import threading
 from types import SimpleNamespace
@@ -189,6 +191,38 @@ class DiagnosticTests(unittest.TestCase):
                 test.cleanup()
             self.assertEqual(remove.call_count, 1)
             self.assertEqual(json.loads(args.report.read_text())["diagnostic_error"], "storage unavailable")
+
+
+class ForwardEvidenceTests(unittest.TestCase):
+    def test_forward_exit_output_is_retained_when_request_fails(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp)
+            program=root/"fake-kubectl"
+            program.write_text("#!"+sys.executable+"\n"+"""
+import socket
+server=socket.socket()
+server.bind(("127.0.0.1",0))
+server.listen()
+print("Forwarding from 127.0.0.1:"+str(server.getsockname()[1])+" -> 10443",flush=True)
+peer,_=server.accept()
+print("simulated forwarding transport lost",flush=True)
+peer.close()
+server.close()
+raise SystemExit(7)
+""")
+            program.chmod(0o755)
+            with redirect_stdout(io.StringIO()) as output:
+                with self.assertRaisesRegex(ValueError,"request failed"):
+                    with acceptance.service_forward(program,root/"kubeconfig","kind-fixture",
+                            service="selected-proxy",remote_port=443,diagnostics_dir=root) as url:
+                        with socket.create_connection(("127.0.0.1",int(url.rsplit(":",1)[1]))) as connection:
+                            self.assertEqual(connection.recv(1),b"")
+                        raise ValueError("request failed")
+            files=list(root.glob("*-forward-*.txt"))
+            self.assertEqual(len(files),1)
+            self.assertIn("simulated forwarding transport lost",files[0].read_text())
+            self.assertIn("request_failed=True",files[0].read_text())
+            self.assertIn("simulated forwarding transport lost",output.getvalue())
 
 
 class CleanupTests(unittest.TestCase):

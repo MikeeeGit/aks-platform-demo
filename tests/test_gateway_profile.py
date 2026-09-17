@@ -2,6 +2,10 @@
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import importlib.util
 import json
+import io
+from contextlib import contextmanager, redirect_stdout
+from types import SimpleNamespace
+from unittest.mock import patch
 import os
 from pathlib import Path
 import ssl
@@ -105,6 +109,50 @@ class StatusTests(unittest.TestCase):
         self.assertFalse(gateway.ready_route(route))
         route["status"]["parents"].pop()
         self.assertFalse(gateway.ready_route(route))
+
+
+class GatewayTunnelTests(unittest.TestCase):
+    def exercise(self, wrong_sni_error):
+        conditions=lambda names:[{"type":name,"status":"True","observedGeneration":1} for name in names]
+        gateway_object={"metadata":{"generation":1},"status":{"conditions":conditions(["Programmed"])}}
+        route={"metadata":{"generation":1},"status":{"parents":[
+            {"parentRef":{"name":"platform-demo-private","sectionName":section},
+             "controllerName":"gateway.envoyproxy.io/gatewayclass-controller",
+             "conditions":conditions(["Accepted","ResolvedRefs"])}
+            for section in ("https-web","https-api")]}}
+        def kubectl(cluster,*args,**kwargs):
+            if "gateway/platform-demo-private" in args:return json.dumps(gateway_object)
+            if "httproute/platform-demo" in args:return json.dumps(route)
+            return json.dumps({"items":[{"metadata":{"name":"selected-proxy"}}]})
+        test=SimpleNamespace(args=SimpleNamespace(kubectl="kubectl"),kubeconfig=Path("unused"),
+                             artifacts=Path("unused"),ca_file=Path("public-ca.crt"),kubectl=kubectl)
+        openings=[];requests=[]
+        @contextmanager
+        def forward(*args,**kwargs):
+            port=10000+len(openings)
+            openings.append(port)
+            yield f"http://127.0.0.1:{port}"
+        def request(port,host,path,ca_file,**kwargs):
+            requests.append((port,host,kwargs.get("request_host")))
+            if kwargs.get("request_host"):raise ValueError("Gateway HTTPS check returned non-200 or an oversized body.")
+            if host=="untrusted.example.test":raise wrong_sni_error
+            if path.endswith("/healthz"):return {"status":"ok"}
+            if path.endswith("/readyz"):return {"status":"ready"}
+            return {"application":"aks-platform-demo","slot":"aks01","revision":"a"*40}
+        with patch.object(gateway,"https_json",side_effect=request),redirect_stdout(io.StringIO()):
+            gateway.check(test,"cluster","aks01","a"*40,forward)
+        return openings,requests
+
+    def test_negative_probes_have_isolated_tunnels_after_verified_positive_requests(self):
+        openings,requests=self.exercise(ConnectionResetError("unmatched SNI reset"))
+        self.assertEqual(openings,[10000,10001,10002])
+        self.assertTrue(all(port==10000 for port,_,_ in requests[:6]))
+        self.assertEqual(requests[6],(10001,"web.example.test","unmatched.example.test"))
+        self.assertEqual(requests[7],(10002,"untrusted.example.test",None))
+
+    def test_dead_local_listener_cannot_count_as_successful_sni_rejection(self):
+        with self.assertRaises(ConnectionRefusedError):
+            self.exercise(ConnectionRefusedError("local tunnel died"))
 
 
 class TLSChecks(unittest.TestCase):
