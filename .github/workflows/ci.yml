@@ -21,7 +21,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: MikeeeGit/aks-delivery-templates
-          ref: c7283d6c6c2c4aa89ac26eabd66f77b34b38eac2
+          ref: 8d81e1fcee4732726fc7e5f6cafbb815c9a68243
           path: templates
           persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -43,6 +43,7 @@ jobs:
       - name: Validate application overlays and render both slots
         run: |
           export PATH="$RUNNER_TEMP/aks-tools:$PATH"
+          "$RUNNER_TEMP/validation-python/bin/python" templates/scripts/validate_gitops.py --source app
           "$RUNNER_TEMP/validation-python/bin/python" -m unittest discover -s app/tests -p 'test_*.py' -v
           "$RUNNER_TEMP/validation-python/bin/python" templates/scripts/delivery.py validate --source app
           for profile in direct gateway; do
@@ -98,7 +99,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: MikeeeGit/aks-delivery-templates
-          ref: c7283d6c6c2c4aa89ac26eabd66f77b34b38eac2
+          ref: 8d81e1fcee4732726fc7e5f6cafbb815c9a68243
           path: templates
           persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6

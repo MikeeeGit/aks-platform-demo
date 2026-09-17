@@ -43,6 +43,8 @@ GitHub proposal publication uses `GITOPS_PR_TOKEN`: a scoped GitHub App installa
 
 Azure proposal publication uses the pipeline's `System.AccessToken`, with the selected build identity granted repository-scoped branch/contribution/PR permissions. Build selection is constrained to the expected repository and producer definition. Keep project-level job authorization limits enabled and authorize the template repository explicitly.
 
+The normal CI workflows call the shared `validate_gitops.py` against committed HEAD, checking every generated release folder before merge. It validates file/receipt integrity and target paths; trusted build selection provides the separate producer checks.
+
 These are repository permissions. Proposal jobs require no cluster credentials or Azure deployment identity. Argo's Git credential is a separate **read-only** credential installed as a Secret outside Git. Human/automation permission to request Argo sync is separate again.
 
 Three identifiers appear during a release:
