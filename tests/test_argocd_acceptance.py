@@ -1,8 +1,9 @@
-"""Credential-free tests for Argo acceptance orchestration and real dumb-HTTP Git."""
+"""Credential-free tests for Argo acceptance and read-only smart HTTP Git."""
 import copy
 import hashlib
 import importlib.util
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -51,6 +52,16 @@ class RevisionTests(unittest.TestCase):
         self.assertFalse(argo.evaluate(value, B, "healthy"))
         value["status"]["conditions"] = []
         self.assertTrue(argo.evaluate(value, B, "healthy"))
+
+    def test_pending_same_revision_retry_does_not_reuse_old_terminal_result(self):
+        value = state(phase="Failed", sync="OutOfSync")
+        value["operation"] = argo.sync_patch(A)["operation"]
+        value["status"]["operationState"]["syncResult"]["resources"] = [{
+            "kind": "Deployment", "name": "platform-demo", "status": "SyncFailed", "message": "old rejection"}]
+        self.assertFalse(argo.evaluate(value, A, "healthy"))
+        self.assertFalse(argo.evaluate(value, A, "rejected"))
+        value["status"]["operationState"]["phase"] = "Succeeded"
+        self.assertFalse(argo.evaluate(value, A, "rejected"))
 
     def test_negative_requires_explicit_deployment_rejection_at_exact_revision(self):
         value = state(phase="Failed", sync="OutOfSync")
@@ -118,7 +129,7 @@ class GitFixtureTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 argo.bridge_gateway(values)
 
-    def test_real_http_clone_promotion_and_git_rollback(self):
+    def test_real_smart_http_refs_clone_fetch_rollback_and_write_rejection(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             fixture = argo.GitFixture(root / "server", "127.0.0.1", run)
@@ -129,6 +140,26 @@ class GitFixtureTests(unittest.TestCase):
                 fixture.replace("aks01", release)
                 fixture.replace("aks02", release)
                 first = fixture.commit("Initial fixture")
+                from urllib.request import Request, urlopen
+                request = Request(fixture.url + "/info/refs?service=git-upload-pack",
+                                  headers={"Git-Protocol": "version=0"})
+                backend = subprocess.run
+                with patch.dict(os.environ, {"ACCEPTANCE_PRIVATE_SENTINEL": "must-not-reach-backend"}):
+                    with patch.object(argo.subprocess, "run", wraps=backend) as backend_calls:
+                        with urlopen(request, timeout=5) as response:
+                            self.assertEqual(response.headers.get_content_type(), "application/x-git-upload-pack-advertisement")
+                            advertised = response.read()
+                self.assertEqual(len(backend_calls.call_args_list), 1)
+                backend_env = backend_calls.call_args.kwargs["env"]
+                self.assertNotIn("ACCEPTANCE_PRIVATE_SENTINEL", backend_env)
+                self.assertEqual(backend_env["GIT_CONFIG_GLOBAL"], "/dev/null")
+                self.assertEqual(backend_env["GIT_PROTOCOL"], "version=0")
+                self.assertIn(b"# service=git-upload-pack\n", advertised)
+                self.assertIn(first.encode() + b" refs/heads/main", advertised)
+                for version in ("0", "2"):
+                    refs = run(["git", "-c", "protocol.version=" + version, "ls-remote",
+                                fixture.url, "refs/heads/main"], capture=True, timeout=15)
+                    self.assertEqual(refs.split()[0], first)
                 clone = root / "client"
                 run(["git", "clone", "--quiet", fixture.url, clone], timeout=15)
                 self.assertEqual(run(["git", "-C", clone, "rev-parse", "HEAD"], capture=True), first)
@@ -146,6 +177,35 @@ class GitFixtureTests(unittest.TestCase):
                 run(["git", "-C", clone, "pull", "--quiet", "--ff-only"], timeout=15)
                 self.assertEqual((clone / "gitops/releases/pprd/uks/aks02/manifest.yaml").read_text(),
                                  "initial release bytes\n")
+                denied = subprocess.run(["git", "-C", str(clone), "push", fixture.url, "HEAD:refs/heads/forbidden"],
+                                        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=15)
+                self.assertNotEqual(denied.returncode, 0)
+                refs = run(["git", "--git-dir", fixture.bare, "for-each-ref", "--format=%(refname)"],
+                           capture=True)
+                self.assertEqual(refs, "refs/heads/main")
+                self.assertTrue(any(event["status"] == 403 for event in fixture.server.events))
+            finally:
+                fixture.close()
+
+
+    def test_smart_git_rejects_other_paths_and_oversized_requests(self):
+        import http.client
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = argo.GitFixture(Path(directory) / "server", "127.0.0.1", run)
+            try:
+                for path in ("/releases.git/config", "/another.git/info/refs?service=git-upload-pack",
+                             "/releases.git/info/refs?service=git-receive-pack",
+                             "/releases.git/%2e%2e/config", "/releases.git/git-receive-pack"):
+                    connection = http.client.HTTPConnection("127.0.0.1", fixture.port, timeout=5)
+                    connection.request("GET", path)
+                    self.assertEqual(connection.getresponse().status, 403)
+                    connection.close()
+                connection = http.client.HTTPConnection("127.0.0.1", fixture.port, timeout=5)
+                connection.request("POST", "/releases.git/git-upload-pack", headers={
+                    "Content-Type": "application/x-git-upload-pack-request",
+                    "Content-Length": str(argo.SmartGitHandler.MAX_BODY + 1)})
+                self.assertEqual(connection.getresponse().status, 413)
+                connection.close()
             finally:
                 fixture.close()
 
@@ -257,6 +317,8 @@ class OrchestrationTests(unittest.TestCase):
     def test_cleanup_closes_git_server_even_if_base_cleanup_fails(self):
         obj = object.__new__(harness.ArgoAcceptance)
         obj.git = Mock()
+        obj.git.server.events = []
+        obj.record = {}
         with patch.object(harness.Acceptance, "cleanup", side_effect=OSError("fixture failure")):
             with self.assertRaises(OSError):
                 obj.cleanup()

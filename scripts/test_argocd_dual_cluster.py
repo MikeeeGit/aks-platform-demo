@@ -77,7 +77,7 @@ class ArgoAcceptance(Acceptance):
                                   "{{json .IPAM.Config}}"], capture=True))
         self.git = argo.GitFixture(self.work / "git-fixture", argo.bridge_gateway(network), run)
         self.record["test_git_transport"] = {
-            "protocol": "isolated HTTP", "bind_address": self.git.server.server_address[0],
+            "protocol": "isolated read-only smart HTTP", "bind_address": self.git.server.server_address[0],
             "port": self.git.port, "public_production_configs_unchanged": True}
         bundle = self.work / "argocd-bootstrap"
         script = self.args.templates / "scripts/argocd_bootstrap.py"
@@ -316,6 +316,8 @@ class ArgoAcceptance(Acceptance):
         super().collect_diagnostics()
 
     def cleanup(self):
+        if self.git:
+            self.record["git_http_requests"] = list(self.git.server.events)
         try:
             super().cleanup()
         finally:
