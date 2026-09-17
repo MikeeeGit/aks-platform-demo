@@ -15,18 +15,18 @@ The examples pin the reviewed shared implementation. When upgrading GitHub, upda
 
 Copy the GitHub files to `.github/workflows/bootstrap.yml`, `image-build.yml`, `build-deploy.yml`, and `promote.yml` respectively. The selected-run promotion verifies the expected producer filename, so keep the filename and its selected `build-workflow` input consistent. Create Azure pipelines pointing at the corresponding private YAML files; record the actual build definition ID.
 
-Configure three separate federated identities: platform bootstrap, registry build, and ordinary app deployment. GitHub uses repository variables `AZURE_AKS_BOOTSTRAP_CLIENT_ID`, `AZURE_ACR_BUILD_CLIENT_ID`, and `AZURE_AKS_DEPLOY_CLIENT_ID`. Azure DevOps uses the three correspondingly named example service connections. Bootstrap also needs the deployment principal's **object ID** in [bootstrap.gateway.apps.json](../../bootstrap.gateway.apps.json).
+Configure separate federated identities for namespace/access bootstrap, platform services, registry build, and ordinary app deployment. These app callers use bootstrap, build and deployment identities; the separately copied platform consumer uses its own privileged identity. GitHub uses repository variables `AZURE_AKS_BOOTSTRAP_CLIENT_ID`, `AZURE_ACR_BUILD_CLIENT_ID`, and `AZURE_AKS_DEPLOY_CLIENT_ID`. Azure DevOps uses the three correspondingly named example service connections. Bootstrap also needs the deployment principal's **object ID** in [bootstrap.gateway.apps.json](../../bootstrap.gateway.apps.json).
 
 Create protected approval environments `image-build`, `pprd-uks-aks01`, `pprd-uks-aks02`, `bootstrap-pprd-uks-aks01`, and `bootstrap-pprd-uks-aks02`. Configure required reviewers, main-branch restrictions, concurrency controls, and private-runner access outside YAML. Authorize only the intended pipeline to each resource.
 
 ## Operate the pipeline
 
-0. Prepare the separate [Envoy platform consumer](https://github.com/MikeeeGit/aks-delivery-templates/tree/main/examples/platform-envoy), install its pinned CRDs/controller/listeners, and complete [workload identity and CSI TLS setup](../../docs/GATEWAY-API.md). This has separate platform approvals and identity from namespace bootstrap.
-1. Run platform bootstrap against the selected slot(s) once, with the separately privileged bootstrap identity. It creates the restricted namespace and scoped application access; ordinary deployment never creates Namespace or grants itself permissions.
-2. Choose build-only, or build-and-deploy for a new release. Build-and-deploy passes the published digest and full source commit directly into selected-slot deployment.
-3. For later promotion, select a successful build run ID and its expected workflow/pipeline definition. The shared template downloads and checks that build's release receipt instead of accepting a guessed tag.
-4. Select `aks01`, `aks02`, or both in the intended order. Sequential deployment is the default; the second slot is reached only after the first succeeds. Parallel deployment is an explicit option, useful when both slots can safely change together. During an upgrade, usually select the inactive slot alone.
-5. Complete [private frontend and gateway verification](../../docs/DELIVERY.md), then make a separately reviewed traffic change if needed.
+1. Run namespace/access bootstrap against the selected slot(s), with the separately privileged bootstrap identity. It creates the restricted namespace and scoped application access; ordinary deployment never creates Namespace or grants itself permissions.
+2. Prepare the separate [Envoy platform consumer](https://github.com/MikeeeGit/aks-delivery-templates/tree/main/examples/platform-envoy), install its pinned CRDs/controller/listeners, and complete [workload identity and CSI TLS setup](../../docs/GATEWAY-API.md). This has separate platform approvals and identity from namespace bootstrap. The TLS Secret is synchronized when the application pod mounts it, so listener readiness is checked after application deployment.
+3. Choose build-only, or build-and-deploy for a new release. Build-and-deploy passes the published digest and full source commit directly into selected-slot deployment.
+4. For later promotion, select a successful build run ID and its expected workflow/pipeline definition. The shared template downloads and checks that build's release receipt instead of accepting a guessed tag.
+5. Select `aks01`, `aks02`, or both in the intended order. Sequential deployment is the default; the second slot is reached only after the first succeeds. Parallel deployment is an explicit option, useful when both slots can safely change together. During an upgrade, usually select the inactive slot alone.
+6. Complete [private frontend and gateway verification](../../docs/DELIVERY.md), then make a separately reviewed traffic change if needed.
 
 For Azure DevOps selected-run promotion, use `image-release-BuildApplication` for the build-only caller and `image-release-Application_Build` for the combined caller. A renamed shared build stage changes its artifact name; keep the expected artifact input explicit.
 
