@@ -1,16 +1,6 @@
-# Source pattern and public changes
+# Application design and compatibility
 
-This sample is newly authored synthetic application code. It contains no extracted business application, customer data, original configuration values, or original Git history.
-
-## Evidence from the updated archive
-
-The September 2026 archive includes application AKS pipelines and Kubernetes manifests that were absent from the earlier March archive and inspected March/June local copies. The earlier .NET/IIS-only finding applies to those older copies; the updated archive is the basis for the current delivery pattern.
-
-The main application pipeline builds and pushes an image once, optionally builds/deploys database changes, and promotes the current build through explicitly ordered environments. A cluster-list parameter selects the primary slot, secondary slot, or both. Per-environment templates loop over selected clusters, defaulting to sequential deployment, then call shared ConfigMap, optional certificate CSI, and Kustomize templates. Application verification follows deployment.
-
-A separate production pipeline selects an existing build number, resolves its build run against a configured definition, and verifies that the corresponding registry image tag exists. Some selected-release deployment blocks in that source are commented out; the public orchestration makes the intended selected-build promotion path executable. It does not imply that every archived production path was runnable unchanged.
-
-The application manifest reference includes rolling updates, startup/liveness/readiness probes, mounted configuration, a ClusterIP Service, TLS ingress, and optional resource-based autoscaling. Kustomize application deployment is provided by the separately inspected `aks-common-templates` source.
+This is a synthetic sample application for demonstrating immutable releases, explicit cluster selection and independent infrastructure, platform and application lifecycles. It contains no business application or customer data.
 
 ## Preserved behavior and deliberate changes
 
@@ -25,14 +15,14 @@ The application manifest reference includes rolling updates, startup/liveness/re
 | Optional database stages | The synthetic app has no database; add reviewed migrations and compatibility checks for a real workload |
 | Optional ConfigMap/CSI integration | Maintained Gateway profile uses workload identity and CSI-synchronized TLS; direct-Service alternative needs neither |
 
-The public image is identified by a digest rather than a mutable version tag. The sample uses one central registry shared by both cluster slots, rather than copying registry-specific company routing. Configuration remains committed Kustomize overlays; production secrets belong to separately controlled workload identity/CSI resources.
+The public image is identified by a digest rather than a mutable version tag. The sample uses one central registry shared by both cluster slots, with registry access configured separately from application promotion. Configuration remains committed Kustomize overlays; production secrets belong to separately controlled workload identity/CSI resources.
 
-The archived content verification disables TLS verification and checks a shared ingress hostname before attempting automatic rollout undo. A shared hostname can identify the active slot rather than the cluster being deployed. Public delivery verifies the selected cluster directly, fails visibly, and leaves rollback as an explicit approved-release action. Gateway cutover remains separately reviewed infrastructure work.
+Delivery verifies the selected cluster directly with certificate validation and explicit source/slot checks. A shared ingress hostname can identify the active slot rather than the candidate, so it is insufficient for selected-slot verification. Rollback is an explicit approved-release action; gateway cutover remains separately reviewed infrastructure work.
 
-Node.js keeps the sample small and locally executable without runtime packages. It does not claim language parity with the original .NET application. The sample has two replicas and a disruption budget; workload-specific autoscaling and database/business behavior are intentionally left to real application owners.
+Node.js keeps the sample small and locally executable without runtime packages. The sample has two replicas and a disruption budget; workload-specific autoscaling and database/business behavior are intentionally left to real application owners.
 
 The maintained profile retains a separate platform-services tier and ingress-backed application path, modernized to Envoy Gateway and Gateway API. The platform owns the private listener and load balancer; the app owns HTTPRoute, ClusterIP Service, workload identity/CSI integration, autoscaling and NetworkPolicy. It re-establishes TLS from Application Gateway to the cluster listener, then uses policy-constrained HTTP to the app. It does not claim pod mTLS.
 
 The direct-Service profile remains a simpler teaching option; it is not full source parity. The separate ingress-compat profile records sanitized retired community ingress-nginx behavior for migration comparison, not a supported new-deployment default. The stateless demo does not carry over application-specific cookie affinity, buffering or timeout settings without corresponding requirements and tests. No private credentials, certificate keys, variable groups or corporate identifiers are copied.
 
-The source design document reinforces independent infrastructure, Helm platform services and Kustomize application lifecycles. Build-once selected-release promotion and an independently reviewed stable-DNS traffic switch are preserved. Gateway API modernization is a public reference implementation; it is not evidence that the original production estate has been migrated.
+Infrastructure, Helm platform services and Kustomize application configuration have independent lifecycles. Build-once selected-release promotion and a separately reviewed stable-DNS traffic switch remain separate operations.
