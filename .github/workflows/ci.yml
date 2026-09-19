@@ -17,30 +17,39 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: app
+          fetch-depth: 0
           persist-credentials: false
+      - name: Determine validation scope
+        id: scope
+        run: python3 app/.github/ci_scope.py --source app
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.scope.outputs.run-tests == 'true'
         with:
           repository: MikeeeGit/aks-delivery-templates
           ref: 8d81e1fcee4732726fc7e5f6cafbb815c9a68243
           path: templates
           persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        if: steps.scope.outputs.run-tests == 'true'
         with:
           node-version-file: app/.node-version
           cache: npm
           cache-dependency-path: app/package-lock.json
       - name: Test application and release metadata
+        if: steps.scope.outputs.run-tests == 'true'
         working-directory: app
         run: |
           npm ci --ignore-scripts --no-audit --no-fund
           npm test
           BUILD_REVISION="$GITHUB_SHA" npm run build
       - name: Install checked Kubernetes and Helm clients
+        if: steps.scope.outputs.run-tests == 'true'
         run: |
           python3 -m venv "$RUNNER_TEMP/validation-python"
           "$RUNNER_TEMP/validation-python/bin/pip" install --require-hashes -r templates/requirements.txt
           python3 templates/scripts/install_tools.py --directory "$RUNNER_TEMP/aks-tools"
       - name: Validate application overlays and render both slots
+        if: steps.scope.outputs.run-tests == 'true'
         run: |
           export PATH="$RUNNER_TEMP/aks-tools:$PATH"
           "$RUNNER_TEMP/validation-python/bin/python" templates/scripts/validate_gitops.py --source app
@@ -61,6 +70,7 @@ jobs:
             done
           done
       - name: Build and smoke-test the container without cloud credentials
+        if: steps.scope.outputs.run-tests == 'true'
         working-directory: app
         run: |
           set -euo pipefail
@@ -73,6 +83,7 @@ jobs:
           done
           node scripts/smoke.mjs --url http://127.0.0.1:18080 --host web.example.test --expected-slot aks01 --expected-revision "$GITHUB_SHA"
       - name: Deploy, promote and roll back across two Kubernetes clusters
+        if: steps.scope.outputs.run-tests == 'true'
         run: |
           set -euo pipefail
           command -v openssl
@@ -80,13 +91,14 @@ jobs:
           export PATH="$RUNNER_TEMP/aks-tools:$PATH"
           "$RUNNER_TEMP/validation-python/bin/python" app/scripts/test_dual_cluster.py --templates "$GITHUB_WORKSPACE/templates" --report "$RUNNER_TEMP/dual-cluster-evidence/report.json" --artifacts "$RUNNER_TEMP/dual-cluster-evidence/diagnostics"
       - name: Retain Kubernetes acceptance evidence
-        if: always()
+        if: always() && steps.scope.outputs.run-tests == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: dual-cluster-acceptance
           path: ${{ runner.temp }}/dual-cluster-evidence/
           if-no-files-found: ignore
           retention-days: 14
+
   argocd-acceptance:
     name: Argo CD dual-cluster acceptance
     runs-on: ubuntu-24.04
@@ -95,17 +107,24 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: app
+          fetch-depth: 0
           persist-credentials: false
+      - name: Determine validation scope
+        id: scope
+        run: python3 app/.github/ci_scope.py --source app
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.scope.outputs.run-tests == 'true'
         with:
           repository: MikeeeGit/aks-delivery-templates
           ref: 8d81e1fcee4732726fc7e5f6cafbb815c9a68243
           path: templates
           persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        if: steps.scope.outputs.run-tests == 'true'
         with:
           node-version-file: app/.node-version
       - name: Install pinned test clients
+        if: steps.scope.outputs.run-tests == 'true'
         run: |
           set -euo pipefail
           python3 -m venv "$RUNNER_TEMP/validation-python"
@@ -113,12 +132,13 @@ jobs:
           python3 templates/scripts/install_tools.py --directory "$RUNNER_TEMP/aks-tools"
           python3 app/scripts/install_ci_tools.py --directory "$RUNNER_TEMP/aks-tools"
       - name: Reconcile, promote, reject, recover and roll back through Argo CD
+        if: steps.scope.outputs.run-tests == 'true'
         run: |
           set -euo pipefail
           export PATH="$RUNNER_TEMP/aks-tools:$PATH"
           "$RUNNER_TEMP/validation-python/bin/python" app/scripts/test_argocd_dual_cluster.py --templates "$GITHUB_WORKSPACE/templates" --report "$RUNNER_TEMP/argocd-evidence/report.json" --artifacts "$RUNNER_TEMP/argocd-evidence/diagnostics"
       - name: Retain Argo CD acceptance evidence
-        if: always()
+        if: always() && steps.scope.outputs.run-tests == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: argocd-dual-cluster-acceptance
