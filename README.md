@@ -48,3 +48,7 @@ Local checks build the Node application, exercise its HTTP process and graceful 
 The two-cluster acceptance harness builds and deploys real images when Docker is available; see its retained report before claiming acceptance. Container build and runtime checks require Docker; cloud checks require provisioned infrastructure and scoped access. Passing local tests does not establish an Azure deployment, successful image pull, an assigned LoadBalancer frontend, or gateway backend health. The deployment guide records those separate checks.
 
 Licensed under [Apache 2.0](LICENSE).
+
+## CI change scope
+
+Markdown-only edits use lightweight required GitHub checks and are excluded from automatic Azure validation builds. Changes to Terraform, application code, scripts, workflow definitions or executable examples still run full validation, including examples stored under docs/. Mixed changes also run full validation. Manual GitHub runs and unknown Git comparison ranges default to full validation.
