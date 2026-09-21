@@ -18,17 +18,17 @@ permissions:
 jobs:
   build:
     # REPLACE every 40-zero pin with one reviewed shared-template commit.
-    uses: MikeeeGit/aks-delivery-templates/.github/workflows/build.yml@b722c9210602482e8849730c17a11b67351d6786
+    uses: MikeeeGit/aks-delivery-templates/.github/workflows/build.yml@a7e98749fe35b5dc5bc263705e8f510832ca2a08
     with:
-      template-ref: 'b722c9210602482e8849730c17a11b67351d6786'
+      template-ref: 'a7e98749fe35b5dc5bc263705e8f510832ca2a08'
       client-id: ${{ vars.AZURE_ACR_BUILD_CLIENT_ID }}
       config: delivery.gateway.apps.json
       build-environment: image-build
   deploy:
     needs: build
-    uses: MikeeeGit/aks-delivery-templates/.github/workflows/deploy-selected.yml@b722c9210602482e8849730c17a11b67351d6786
+    uses: MikeeeGit/aks-delivery-templates/.github/workflows/deploy-selected.yml@a7e98749fe35b5dc5bc263705e8f510832ca2a08
     with:
-      template-ref: 'b722c9210602482e8849730c17a11b67351d6786'
+      template-ref: 'a7e98749fe35b5dc5bc263705e8f510832ca2a08'
       source-commit: ${{ needs.build.outputs.source-commit }}
       image-digest: ${{ needs.build.outputs.image-digest }}
       client-id: ${{ vars.AZURE_AKS_DEPLOY_CLIENT_ID }}

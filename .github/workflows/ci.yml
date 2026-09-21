@@ -26,7 +26,7 @@ jobs:
         if: steps.scope.outputs.run-tests == 'true'
         with:
           repository: MikeeeGit/aks-delivery-templates
-          ref: b722c9210602482e8849730c17a11b67351d6786
+          ref: a7e98749fe35b5dc5bc263705e8f510832ca2a08
           path: templates
           persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -85,14 +85,14 @@ jobs:
             sleep 1
           done
           node scripts/smoke.mjs --url http://127.0.0.1:18080 --host web.example.test --expected-slot aks01 --expected-revision "$GITHUB_SHA"
-      - name: Deploy, promote and roll back across two Kubernetes clusters
+      - name: "Worked example: deploy three tiers, switch traffic and remove"
         if: steps.scope.outputs.run-tests == 'true'
         run: |
           set -euo pipefail
           command -v openssl
           python3 app/scripts/install_ci_tools.py --directory "$RUNNER_TEMP/aks-tools"
           export PATH="$RUNNER_TEMP/aks-tools:$PATH"
-          "$RUNNER_TEMP/validation-python/bin/python" app/scripts/test_dual_cluster.py --templates "$GITHUB_WORKSPACE/templates" --report "$RUNNER_TEMP/dual-cluster-evidence/report.json" --artifacts "$RUNNER_TEMP/dual-cluster-evidence/diagnostics"
+          python3 app/scripts/run_worked_example.py --method direct --output "$RUNNER_TEMP/dual-cluster-evidence"
       - name: Retain Kubernetes acceptance evidence
         if: always() && steps.scope.outputs.run-tests == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -119,7 +119,7 @@ jobs:
         if: steps.scope.outputs.run-tests == 'true'
         with:
           repository: MikeeeGit/aks-delivery-templates
-          ref: b722c9210602482e8849730c17a11b67351d6786
+          ref: a7e98749fe35b5dc5bc263705e8f510832ca2a08
           path: templates
           persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -139,7 +139,7 @@ jobs:
         run: |
           set -euo pipefail
           export PATH="$RUNNER_TEMP/aks-tools:$PATH"
-          "$RUNNER_TEMP/validation-python/bin/python" app/scripts/test_argocd_dual_cluster.py --templates "$GITHUB_WORKSPACE/templates" --report "$RUNNER_TEMP/argocd-evidence/report.json" --artifacts "$RUNNER_TEMP/argocd-evidence/diagnostics"
+          python3 app/scripts/run_worked_example.py --method argocd --output "$RUNNER_TEMP/argocd-evidence"
       - name: Retain Argo CD acceptance evidence
         if: always() && steps.scope.outputs.run-tests == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7

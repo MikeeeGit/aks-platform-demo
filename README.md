@@ -1,5 +1,8 @@
 # AKS platform demo
 
+
+Start with the [three-tier worked example](docs/WORKED-EXAMPLE.md) for a complete disposable deployment, stable-endpoint switch, rollback and removal; it links the separate Azure deployment and removal procedures.
+
 A small, synthetic Node.js application demonstrating build-once delivery to two private AKS clusters using an immutable image digest and shared Kustomize configuration. Choose direct pipeline deployment or the additional Argo CD method. It provides health, readiness, and version endpoints so a deployment and Application Gateway cutover can be checked explicitly.
 
 This repository is an application example. Infrastructure comes from the companion `azure-network-foundation`, `azure-aks-foundation`, and `azure-application-gateway` repositories. Reusable delivery comes from `aks-delivery-templates`. Example names, addresses, subscriptions, and domains are synthetic; replace them together before deployment.

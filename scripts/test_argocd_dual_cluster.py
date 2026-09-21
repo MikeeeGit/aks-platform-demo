@@ -21,7 +21,8 @@ from urllib.request import urlopen
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import acceptance_argocd as argo
-from test_dual_cluster import Acceptance, ROOT, run
+import acceptance_cutover as traffic
+from test_dual_cluster import Acceptance, ROOT, run, service_forward
 
 
 class ArgoAcceptance(Acceptance):
@@ -227,23 +228,30 @@ class ArgoAcceptance(Acceptance):
             self.check_release(cluster, slot, self.original_commit, first, "argocd-initial")
             self.check_hpa(cluster, slot)
 
-        updated = self.updated_source()
-        second = self.build(updated, "updated")
-        if second == first:
-            raise ValueError("Distinct source revisions unexpectedly produced the same image.")
-        update = self.render(updated, second, "aks02", "updated-aks02")
-        self.git.replace("aks02", self.materialize(update, "git-updated-aks02"))
-        update_git = self.commit_git("Promote candidate release to inactive slot")
-        self.sync(self.clusters[1], "aks02", update_git, label="update-inactive")
-        self.check_release(self.clusters[1], "aks02", updated, second, "argocd-update-inactive")
-        self.check_release(self.clusters[0], "aks01", self.original_commit, first, "active-unchanged-after-update")
+        with traffic.endpoint(self, service_forward) as frontend:
+            traffic.check(self, frontend, "aks01", self.original_commit, "initial-active")
+            updated = self.updated_source()
+            second = self.build(updated, "updated")
+            if second == first:
+                raise ValueError("Distinct source revisions unexpectedly produced the same image.")
+            update = self.render(updated, second, "aks02", "updated-aks02")
+            self.git.replace("aks02", self.materialize(update, "git-updated-aks02"))
+            update_git = self.commit_git("Promote candidate release to inactive slot")
+            self.sync(self.clusters[1], "aks02", update_git, label="update-inactive")
+            self.check_release(self.clusters[1], "aks02", updated, second, "argocd-update-inactive")
+            self.check_release(self.clusters[0], "aks01", self.original_commit, first, "active-unchanged-after-update")
+            traffic.check(self, frontend, "aks01", self.original_commit, "standby-updated-active-unchanged")
+            frontend.switch("aks02")
+            traffic.check(self, frontend, "aks02", updated, "traffic-cutover")
+            frontend.switch("aks01")
+            traffic.check(self, frontend, "aks01", self.original_commit, "traffic-rollback")
 
-        # A new Git commit restores the original exact rendered files, rather than
-        # applying an old manifest directly or issuing kubectl rollout undo.
-        self.git.replace("aks02", originals["aks02"])
-        rollback_git = self.commit_git("Roll back inactive slot to original approved release")
-        self.sync(self.clusters[1], "aks02", rollback_git, label="git-rollback")
-        self.check_release(self.clusters[1], "aks02", self.original_commit, first, "argocd-git-rollback")
+            # A new Git commit restores the original exact rendered files, rather than
+            # applying an old manifest directly or issuing kubectl rollout undo.
+            self.git.replace("aks02", originals["aks02"])
+            rollback_git = self.commit_git("Roll back inactive slot to original approved release")
+            self.sync(self.clusters[1], "aks02", rollback_git, label="git-rollback")
+            self.check_release(self.clusters[1], "aks02", self.original_commit, first, "argocd-git-rollback")
 
         bad_manifest = self.git.slot_path("aks02") / "manifest.yaml"
         bad_manifest.write_text(argo.invalid_deployment(bad_manifest.read_text()))
@@ -282,6 +290,11 @@ class ArgoAcceptance(Acceptance):
             raise ValueError("Active slot was unexpectedly synchronized again.")
         self.record["argocd_checks"].append(dict(active, step="active-operation-unchanged",
                                                 slot="aks01", expected_operation_revision=initial_git))
+        self.record["tiers"].append({
+            "tier": 3, "name": "application", "executor": "shared-render-gitops-and-argocd",
+            "result": "passed", "clusters": list(self.clusters),
+            "traffic_cutover_and_rollback": True,
+        })
         self.record["result"] = "passed"
 
     def collect_diagnostics(self):

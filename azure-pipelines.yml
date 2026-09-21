@@ -14,7 +14,7 @@ resources:
     - repository: aksTemplates
       type: git
       name: aks-delivery-templates
-      ref: b722c9210602482e8849730c17a11b67351d6786
+      ref: a7e98749fe35b5dc5bc263705e8f510832ca2a08
 pool:
   vmImage: ubuntu-24.04
 steps:
@@ -84,7 +84,7 @@ steps:
       command -v openssl
       python3 "$(Pipeline.Workspace)/s/app/scripts/install_ci_tools.py" --directory "$(Agent.TempDirectory)/aks-tools"
       export PATH="$(Agent.TempDirectory)/aks-tools:$PATH"
-      "$(Agent.TempDirectory)/validation-python/bin/python" "$(Pipeline.Workspace)/s/app/scripts/test_dual_cluster.py" --templates "$(Pipeline.Workspace)/s/templates" --report "$(Agent.TempDirectory)/dual-cluster-evidence/report.json" --artifacts "$(Agent.TempDirectory)/dual-cluster-evidence/diagnostics"
+      python3 "$(Pipeline.Workspace)/s/app/scripts/run_worked_example.py" --method direct --output "$(Agent.TempDirectory)/dual-cluster-evidence"
     displayName: Deploy, promote and roll back across two Kubernetes clusters
   - task: PublishPipelineArtifact@1
     condition: always()
@@ -96,7 +96,7 @@ steps:
   - bash: |
       set -euo pipefail
       export PATH="$(Agent.TempDirectory)/aks-tools:$PATH"
-      "$(Agent.TempDirectory)/validation-python/bin/python" "$(Pipeline.Workspace)/s/app/scripts/test_argocd_dual_cluster.py" --templates "$(Pipeline.Workspace)/s/templates" --report "$(Agent.TempDirectory)/argocd-evidence/report.json" --artifacts "$(Agent.TempDirectory)/argocd-evidence/diagnostics"
+      python3 "$(Pipeline.Workspace)/s/app/scripts/run_worked_example.py" --method argocd --output "$(Agent.TempDirectory)/argocd-evidence"
     displayName: Argo CD dual-cluster GitOps acceptance
   - task: PublishPipelineArtifact@1
     condition: always()

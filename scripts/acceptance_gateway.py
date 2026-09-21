@@ -1,13 +1,10 @@
 """Envoy/TLS acceptance support. All keys and cluster changes are test-local."""
-from contextlib import contextmanager
-import hashlib
 import http.client
 import json
 from pathlib import Path
 import socket
 import ssl
 import time
-from urllib.request import urlopen
 import yaml
 
 GATEWAY = "platform-demo-private"
@@ -58,20 +55,9 @@ def https_json(port, host, path, ca_file, *, request_host=None):
 
 
 def prepare_files(test, run):
-    pins = test.pins["envoy_gateway"]
     directory = test.work / "gateway"
     directory.mkdir()
     test.gateway_dir = directory
-    for index, item in enumerate(pins["crds"]):
-        content = urlopen(item["url"], timeout=90).read()
-        if hashlib.sha256(content).hexdigest() != item["sha256"]:
-            raise ValueError("Envoy/Gateway API CRD checksum mismatch.")
-        (directory / f"crds-{index}.yaml").write_bytes(content)
-    run([test.args.helm, "pull", pins["chart"], "--destination", directory], timeout=180)
-    charts = list(directory.glob("*.tgz"))
-    if len(charts) != 1 or hashlib.sha256(charts[0].read_bytes()).hexdigest() != pins["chart_sha256"]:
-        raise ValueError("Envoy Helm package checksum mismatch.")
-    test.envoy_chart = charts[0]
     test.ca_file = directory / "ca.crt"
     run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "2",
          "-subj", "/CN=Ephemeral AKS demo acceptance CA",
@@ -108,57 +94,23 @@ def prepare_files(test, run):
     for target in config["targets"]:
         target["verification"]["ingress"]["ca_file"] = "deploy/trust/acceptance-ca.crt"
     (test.fixture / "delivery.gateway.apps.json").write_text(json.dumps(config, indent=2)+"\n")
-    values = {"crds": {"enabled": False}, "config": {"envoyGateway": {
-        "provider": {"type": "Kubernetes", "kubernetes": {
-            "deploy": {"type": "GatewayNamespace"},
-            "watch": {"type": "Namespaces", "namespaces": [NAMESPACE, "envoy-gateway-system"]}}}}}}
-    for key, value in pins.get("images", {}).items():
-        values.setdefault("global", {}).setdefault("images", {})[key] = {"image": value}
-    (directory / "values.yaml").write_text(yaml.safe_dump(values))
+    # The same shared engine that serves Azure prepares the platform fixtures.
+    # Imports remain local so standalone HTTPS helper tests need no extra modules.
+    import acceptance_engines
+    acceptance_engines.prepare_platform_fixture(test)
 
 
 def install(test, cluster, run):
+    import acceptance_engines
+    slot = cluster.rsplit("-", 1)[-1]
+    acceptance_engines.install_platform(test, cluster, slot)
+    # Azure CSI is not imitated. Inject only this run's temporary local TLS fixture.
     directory = test.gateway_dir
-    for path in sorted(directory.glob("crds-*.yaml")):
-        objects = list(yaml.safe_load_all(path.read_text()))
-        crds = [item for item in objects if item and item.get("kind") == "CustomResourceDefinition"]
-        other = [item for item in objects if item and item.get("kind") != "CustomResourceDefinition"]
-        test.kubectl(cluster, "apply", "--server-side", "-f", "-",
-                     input=yaml.safe_dump_all(crds))
-        for crd in crds:
-            test.kubectl(cluster, "wait", "--for=condition=Established",
-                         "crd/" + crd["metadata"]["name"], "--timeout=120s")
-        if other:
-            test.kubectl(cluster, "apply", "--server-side", "-f", "-",
-                         input=yaml.safe_dump_all(other))
-    run([test.args.helm, "upgrade", "--install", "envoy-gateway", test.envoy_chart,
-         "--namespace", "envoy-gateway-system", "--create-namespace",
-         "--kubeconfig", test.kubeconfig, "--kube-context", "kind-" + cluster,
-         "--values", directory / "values.yaml", "--wait", "--timeout", "300s"], timeout=420)
-    # Real TLS with a temporary trusted CA; no Azure CSI imitation.
     secret = test.kubectl(
         cluster, "-n", NAMESPACE, "create", "secret", "tls", "platform-demo-tls",
         "--cert=" + str(directory / "tls.crt"), "--key=" + str(directory / "tls.key"),
         "--dry-run=client", "-o", "yaml", capture=True)
     test.kubectl(cluster, "apply", "-f", "-", input=secret)
-    profile = test.args.templates / "examples/platform-envoy"
-    proxy = yaml.safe_load((profile / "manifests/proxy-aks01.yaml").read_text())
-    kubernetes = proxy["spec"]["provider"]["kubernetes"]
-    expected = test.pins["envoy_gateway"]["images"]
-    if kubernetes["envoyDeployment"]["container"]["image"] != expected["envoyProxy"]:
-        raise ValueError("Platform proxy image does not match the acceptance pin.")
-    shutdown = kubernetes["envoyDeployment"]["patch"]["value"]["spec"]["template"]["spec"]["containers"]
-    if not any(c.get("name") == "shutdown-manager" and c.get("image") == expected["envoyGateway"] for c in shutdown):
-        raise ValueError("Platform shutdown-manager image does not match the acceptance pin.")
-    kubernetes["envoyService"] = {"type": "ClusterIP"}
-    kubernetes.pop("envoyHpa", None)
-    kubernetes["envoyDeployment"]["replicas"] = 1
-    # Preserve pinned images and security; reduce only test capacity/replica count.
-    kubernetes["envoyDeployment"]["container"]["resources"] = {
-        "requests": {"cpu": "100m", "memory": "128Mi"},
-        "limits": {"cpu": "500m", "memory": "512Mi"}}
-    test.kubectl(cluster, "apply", "--server-side", "-f", "-", input=yaml.safe_dump(proxy))
-    test.kubectl(cluster, "apply", "--server-side", "-f", profile / "manifests/gateway.yaml")
 
 
 def check(test, cluster, slot, commit, forward):

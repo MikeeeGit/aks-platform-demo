@@ -30,6 +30,8 @@ import uuid
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import acceptance_gateway as gateway
 import acceptance_native_rbac as native_rbac
+import acceptance_cutover as traffic
+import acceptance_engines as engines
 
 ROOT = Path(__file__).resolve().parents[1]
 DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
@@ -250,6 +252,12 @@ class Acceptance:
             if len(self.clusters) == 1:
                 run(["docker", "network", "connect", "kind", self.registry])
                 self.wait_registry("after-kind-network-connect")
+        self.record.setdefault("tiers", []).append({
+            "tier": 1, "name": "infrastructure", "executor": "kind-and-local-registry",
+            "result": "passed", "clusters": list(self.clusters),
+            "qualification_limit": "Creates disposable Kubernetes infrastructure; does not execute Azure Terraform.",
+        })
+        for cluster in self.clusters:
             self.kubectl(cluster, "apply", "-f", self.fixture / "deploy/bootstrap/namespace.yaml")
             deadline = time.monotonic() + 60
             while True:
@@ -261,6 +269,10 @@ class Acceptance:
                         raise TimeoutError("Platform namespace default ServiceAccount was not created.")
                     time.sleep(1)
             gateway.install(self, cluster, run)
+        self.record["tiers"].append({
+            "tier": 2, "name": "platform", "executor": "shared-platform-prepare-and-apply",
+            "result": "passed", "clusters": list(self.clusters),
+        })
 
     def build(self, commit, tag):
         self.wait_registry("before-build-" + tag)
@@ -289,9 +301,7 @@ class Acceptance:
         return output
 
     def apply_and_check(self, cluster, slot, bundle, commit, digest, label):
-        manifest = bundle / "manifest.yaml"
-        self.kubectl(cluster, "apply", "--dry-run=server", "--validate=strict", "-f", manifest)
-        self.kubectl(cluster, "apply", "--validate=strict", "-f", manifest)
+        engines.deploy(self, cluster, slot, bundle)
         self.check_release(cluster, slot, commit, digest, label)
 
     def check_release(self, cluster, slot, commit, digest, label):
@@ -321,26 +331,38 @@ class Acceptance:
             originals[slot] = self.render(self.original_commit, first, slot, "initial-" + slot)
             native_rbac.check(self, cluster, slot, originals[slot])
             self.apply_and_check(cluster, slot, originals[slot], self.original_commit, first, "initial")
-        # A second real source revision and build are isolated to the disposable clone.
-        package = json.loads((self.fixture / "package.json").read_text())
-        package["version"] = "0.0.0-acceptance." + self.prefix
-        (self.fixture / "package.json").write_text(json.dumps(package, indent=2) + "\n")
-        lock = json.loads((self.fixture / "package-lock.json").read_text())
-        lock["version"] = package["version"]
-        lock["packages"][""]["version"] = package["version"]
-        (self.fixture / "package-lock.json").write_text(json.dumps(lock, indent=2) + "\n")
-        run(["git", "-C", self.fixture, "add", "package.json", "package-lock.json"])
-        run(["git", "-C", self.fixture, "-c", "user.name=Acceptance Fixture",
-             "-c", "user.email=fixture@example.test", "-c", "commit.gpgsign=false",
-             "-c", "core.hooksPath=/dev/null", "commit", "-qm", "Synthetic acceptance update"])
-        updated = run(["git", "-C", self.fixture, "rev-parse", "HEAD"], capture=True)
-        second = self.build(updated, "updated")
-        if second == first:
-            raise ValueError("Distinct source revisions unexpectedly produced the same image.")
-        update = self.render(updated, second, "aks02", "updated-aks02")
-        self.apply_and_check(self.clusters[1], "aks02", update, updated, second, "update-inactive")
-        self.apply_and_check(self.clusters[1], "aks02", originals["aks02"], self.original_commit, first, "restore-approved-release")
-        self.check_release(self.clusters[0], "aks01", self.original_commit, first, "active-slot-unchanged")
+        with traffic.endpoint(self, service_forward) as frontend:
+            traffic.check(self, frontend, "aks01", self.original_commit, "initial-active")
+            # A second real source revision and build are isolated to the disposable clone.
+            package = json.loads((self.fixture / "package.json").read_text())
+            package["version"] = "0.0.0-acceptance." + self.prefix
+            (self.fixture / "package.json").write_text(json.dumps(package, indent=2) + "\n")
+            lock = json.loads((self.fixture / "package-lock.json").read_text())
+            lock["version"] = package["version"]
+            lock["packages"][""]["version"] = package["version"]
+            (self.fixture / "package-lock.json").write_text(json.dumps(lock, indent=2) + "\n")
+            run(["git", "-C", self.fixture, "add", "package.json", "package-lock.json"])
+            run(["git", "-C", self.fixture, "-c", "user.name=Acceptance Fixture",
+                 "-c", "user.email=fixture@example.test", "-c", "commit.gpgsign=false",
+                 "-c", "core.hooksPath=/dev/null", "commit", "-qm", "Synthetic acceptance update"])
+            updated = run(["git", "-C", self.fixture, "rev-parse", "HEAD"], capture=True)
+            second = self.build(updated, "updated")
+            if second == first:
+                raise ValueError("Distinct source revisions unexpectedly produced the same image.")
+            update = self.render(updated, second, "aks02", "updated-aks02")
+            self.apply_and_check(self.clusters[1], "aks02", update, updated, second, "update-inactive")
+            traffic.check(self, frontend, "aks01", self.original_commit, "standby-updated-active-unchanged")
+            frontend.switch("aks02")
+            traffic.check(self, frontend, "aks02", updated, "traffic-cutover")
+            frontend.switch("aks01")
+            traffic.check(self, frontend, "aks01", self.original_commit, "traffic-rollback")
+            self.apply_and_check(self.clusters[1], "aks02", originals["aks02"], self.original_commit, first, "restore-approved-release")
+            self.check_release(self.clusters[0], "aks01", self.original_commit, first, "active-slot-unchanged")
+        self.record["tiers"].append({
+            "tier": 3, "name": "application", "executor": "shared-render-and-deploy",
+            "result": "passed", "clusters": list(self.clusters),
+            "traffic_cutover_and_rollback": True,
+        })
         self.record["result"] = "passed"
 
     def collect_diagnostics(self):

@@ -15,9 +15,9 @@ on:
 permissions: {contents: read, actions: read}
 jobs:
   propose:
-    uses: MikeeeGit/aks-delivery-templates/.github/workflows/gitops-propose.yml@b722c9210602482e8849730c17a11b67351d6786
+    uses: MikeeeGit/aks-delivery-templates/.github/workflows/gitops-propose.yml@a7e98749fe35b5dc5bc263705e8f510832ca2a08
     with:
-      template-ref: 'b722c9210602482e8849730c17a11b67351d6786'
+      template-ref: 'a7e98749fe35b5dc5bc263705e8f510832ca2a08'
       build-run-id: ${{ inputs.build-run-id }}
       build-workflow: image-build.yml
       environment: pprd

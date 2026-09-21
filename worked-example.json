@@ -1,0 +1,5 @@
+{
+  "schema_version": 1,
+  "templates_repository": "https://github.com/MikeeeGit/aks-delivery-templates.git",
+  "templates_commit": "a7e98749fe35b5dc5bc263705e8f510832ca2a08"
+}
