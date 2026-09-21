@@ -7,9 +7,9 @@ permissions:
 jobs:
   build:
     # Keep both pins on the same reviewed shared-template commit.
-    uses: MikeeeGit/aks-delivery-templates/.github/workflows/build.yml@d15f578dd05d1becf162b5fa67b5d0503a06da4c
+    uses: MikeeeGit/aks-delivery-templates/.github/workflows/build.yml@f0034fd0f5a4f56271c514c439ca0e3795c56aae
     with:
-      template-ref: 'd15f578dd05d1becf162b5fa67b5d0503a06da4c'
+      template-ref: 'f0034fd0f5a4f56271c514c439ca0e3795c56aae'
       client-id: ${{ vars.AZURE_ACR_BUILD_CLIENT_ID }}
       config: delivery.gateway.apps.json
       build-environment: image-build

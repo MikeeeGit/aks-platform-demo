@@ -14,9 +14,9 @@ permissions:
 jobs:
   bootstrap:
     # Keep both pins on the same reviewed shared-template commit.
-    uses: MikeeeGit/aks-delivery-templates/.github/workflows/bootstrap.yml@d15f578dd05d1becf162b5fa67b5d0503a06da4c
+    uses: MikeeeGit/aks-delivery-templates/.github/workflows/bootstrap.yml@f0034fd0f5a4f56271c514c439ca0e3795c56aae
     with:
-      template-ref: 'd15f578dd05d1becf162b5fa67b5d0503a06da4c'
+      template-ref: 'f0034fd0f5a4f56271c514c439ca0e3795c56aae'
       config: delivery.gateway.apps.json
       bootstrap-config: bootstrap.gateway.apps.json
       environment: pprd

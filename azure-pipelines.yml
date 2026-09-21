@@ -14,7 +14,7 @@ resources:
     - repository: aksTemplates
       type: git
       name: aks-delivery-templates
-      ref: d15f578dd05d1becf162b5fa67b5d0503a06da4c
+      ref: f0034fd0f5a4f56271c514c439ca0e3795c56aae
 pool:
   vmImage: ubuntu-24.04
 steps:

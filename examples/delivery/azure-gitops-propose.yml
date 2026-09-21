@@ -17,7 +17,7 @@ resources:
     - repository: aksTemplates
       type: git
       name: Platform/aks-delivery-templates # Replace the synthetic project name.
-      ref: 'd15f578dd05d1becf162b5fa67b5d0503a06da4c'
+      ref: 'f0034fd0f5a4f56271c514c439ca0e3795c56aae'
 stages:
   - template: azure-pipelines/stages/gitops-propose.yml@aksTemplates
     parameters:
