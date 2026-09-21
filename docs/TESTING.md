@@ -62,6 +62,8 @@ Follow [deployment verification](DELIVERY.md): confirm both Service private IPs,
 
 ## Azure managed identity and app-secret CSI
 
+The [21 September 2026 Azure qualification record](https://github.com/MikeeeGit/terraform-delivery-templates/blob/main/docs/azure/qualification-2026-09-21.md) records successful private Azure DevOps builds/scans, application deployment and live CSI readiness on both AKS slots, standby-only promotion and WAF traffic switch/rollback. The [run list](https://github.com/MikeeeGit/terraform-delivery-templates/blob/main/docs/azure/quick-runbook.md) links the deployment and removal actions. This cloud record is separate from the kind direct/Argo reports.
+
 The [Azure workload profile](AZURE-WORKLOAD.md) adds an opt-in readiness dependency and a read-only live qualifier. Local tests render both Azure overlays, test missing/empty/replaced files without serving their content, and reject incorrect cluster/identity/CSI status, stale Pod ownership, wrong revisions and unavailable readiness. Those tests do not call Azure. Run the full private build/deploy caller or the documented qualifier against both actual AKS slots to establish the cloud identity/Key Vault path. Its private report remains separate from kind evidence.
 
 

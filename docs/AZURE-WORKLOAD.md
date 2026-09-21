@@ -34,6 +34,8 @@ The app-secret CSI class deliberately does not synchronize a Kubernetes Secret. 
 
 ## Build, deploy and qualify through either CI host
 
+Before application delivery, copy the [Azure application-bootstrap caller](../examples/delivery/azure-bootstrap.yml) or [GitHub equivalent](../examples/delivery/github-bootstrap.yml) into the private consumer. Set `configFile` / `config` to `delivery.azure-workload.apps.json`, and select the reviewed `bootstrap.native.apps.json` prepared from the actual application identity observations. Use the dedicated bootstrap identity and select both slots. The [worked Azure procedure](https://github.com/MikeeeGit/terraform-delivery-templates/blob/main/docs/azure/three-tier-worked-example.md#tier-2-bootstrap-access-and-install-platform-services) covers first platform access and the native bootstrap inputs.
+
 The full callers use the same shared build, selected-slot deployment, receipt and promotion templates as the other profiles:
 
 | Operation | GitHub | Azure DevOps |
