@@ -14,7 +14,7 @@ resources:
     - repository: aksTemplates
       type: git
       name: Platform/aks-delivery-templates # REPLACE the synthetic project name.
-      ref: '6eb3c083146afaeeacc75a2f3788ba15226fccc7' # Reviewed shared-template commit; update deliberately.
+      ref: '3610262472824c48576f29faa6a57f19f34b0808' # Reviewed shared-template commit; update deliberately.
 stages:
   - template: azure-pipelines/stages/build-deploy.yml@aksTemplates
     parameters:

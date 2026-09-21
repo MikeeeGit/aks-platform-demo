@@ -29,9 +29,9 @@ permissions:
 jobs:
   promote:
     # Keep both template references on the same reviewed immutable commit.
-    uses: MikeeeGit/aks-delivery-templates/.github/workflows/promote.yml@6eb3c083146afaeeacc75a2f3788ba15226fccc7
+    uses: MikeeeGit/aks-delivery-templates/.github/workflows/promote.yml@3610262472824c48576f29faa6a57f19f34b0808
     with:
-      template-ref: '6eb3c083146afaeeacc75a2f3788ba15226fccc7'
+      template-ref: '3610262472824c48576f29faa6a57f19f34b0808'
       build-run-id: ${{ inputs.build-run-id }}
       build-workflow: ${{ inputs.build-workflow }}
       client-id: ${{ vars.AZURE_AKS_DEPLOY_CLIENT_ID }}
@@ -60,14 +60,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: MikeeeGit/aks-delivery-templates
-          ref: 6eb3c083146afaeeacc75a2f3788ba15226fccc7
+          ref: 3610262472824c48576f29faa6a57f19f34b0808
           path: templates
           persist-credentials: false
       - name: Check private protected caller and install pinned clients
         env:
           GH_TOKEN: ${{ github.token }}
           PRIVATE_REPOSITORY: ${{ github.event.repository.private }}
-          TEMPLATE_REF: 6eb3c083146afaeeacc75a2f3788ba15226fccc7
+          TEMPLATE_REF: 3610262472824c48576f29faa6a57f19f34b0808
           RUNNER_LABELS: '["self-hosted","linux","aks-private"]'
         run: |
           set -euo pipefail

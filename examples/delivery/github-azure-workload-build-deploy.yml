@@ -18,17 +18,17 @@ permissions:
 jobs:
   build:
     # Keep all template references on the same reviewed immutable commit.
-    uses: MikeeeGit/aks-delivery-templates/.github/workflows/build.yml@6eb3c083146afaeeacc75a2f3788ba15226fccc7
+    uses: MikeeeGit/aks-delivery-templates/.github/workflows/build.yml@3610262472824c48576f29faa6a57f19f34b0808
     with:
-      template-ref: '6eb3c083146afaeeacc75a2f3788ba15226fccc7'
+      template-ref: '3610262472824c48576f29faa6a57f19f34b0808'
       client-id: ${{ vars.AZURE_ACR_BUILD_CLIENT_ID }}
       config: delivery.azure-workload.apps.json
       build-environment: pprd-image-build
   deploy:
     needs: build
-    uses: MikeeeGit/aks-delivery-templates/.github/workflows/deploy-selected.yml@6eb3c083146afaeeacc75a2f3788ba15226fccc7
+    uses: MikeeeGit/aks-delivery-templates/.github/workflows/deploy-selected.yml@3610262472824c48576f29faa6a57f19f34b0808
     with:
-      template-ref: '6eb3c083146afaeeacc75a2f3788ba15226fccc7'
+      template-ref: '3610262472824c48576f29faa6a57f19f34b0808'
       source-commit: ${{ needs.build.outputs.source-commit }}
       image-digest: ${{ needs.build.outputs.image-digest }}
       client-id: ${{ vars.AZURE_AKS_DEPLOY_CLIENT_ID }}
@@ -58,14 +58,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: MikeeeGit/aks-delivery-templates
-          ref: 6eb3c083146afaeeacc75a2f3788ba15226fccc7
+          ref: 3610262472824c48576f29faa6a57f19f34b0808
           path: templates
           persist-credentials: false
       - name: Check private protected caller and install pinned clients
         env:
           GH_TOKEN: ${{ github.token }}
           PRIVATE_REPOSITORY: ${{ github.event.repository.private }}
-          TEMPLATE_REF: 6eb3c083146afaeeacc75a2f3788ba15226fccc7
+          TEMPLATE_REF: 3610262472824c48576f29faa6a57f19f34b0808
           RUNNER_LABELS: '["self-hosted","linux","aks-private"]'
         run: |
           set -euo pipefail
