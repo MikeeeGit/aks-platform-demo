@@ -13,7 +13,7 @@ permissions:
   id-token: write
 jobs:
   bootstrap:
-    # REPLACE both 40-zero pins with the same reviewed shared-template commit.
+    # Keep both pins on the same reviewed shared-template commit.
     uses: MikeeeGit/aks-delivery-templates/.github/workflows/bootstrap.yml@d15f578dd05d1becf162b5fa67b5d0503a06da4c
     with:
       template-ref: 'd15f578dd05d1becf162b5fa67b5d0503a06da4c'

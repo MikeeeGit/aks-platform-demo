@@ -17,7 +17,7 @@ permissions:
   id-token: write
 jobs:
   build:
-    # REPLACE every 40-zero pin with one reviewed shared-template commit.
+    # Keep every shared-template pin on the same reviewed commit.
     uses: MikeeeGit/aks-delivery-templates/.github/workflows/build.yml@d15f578dd05d1becf162b5fa67b5d0503a06da4c
     with:
       template-ref: 'd15f578dd05d1becf162b5fa67b5d0503a06da4c'
