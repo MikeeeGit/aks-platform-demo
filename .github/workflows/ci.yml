@@ -26,7 +26,7 @@ jobs:
         if: steps.scope.outputs.run-tests == 'true'
         with:
           repository: MikeeeGit/aks-delivery-templates
-          ref: a7e98749fe35b5dc5bc263705e8f510832ca2a08
+          ref: 6eb3c083146afaeeacc75a2f3788ba15226fccc7
           path: templates
           persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -119,7 +119,7 @@ jobs:
         if: steps.scope.outputs.run-tests == 'true'
         with:
           repository: MikeeeGit/aks-delivery-templates
-          ref: a7e98749fe35b5dc5bc263705e8f510832ca2a08
+          ref: 6eb3c083146afaeeacc75a2f3788ba15226fccc7
           path: templates
           persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6

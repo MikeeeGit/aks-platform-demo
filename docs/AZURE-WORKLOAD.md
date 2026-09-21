@@ -84,6 +84,54 @@ The verifier checks:
 
 [SecretProviderClassPodStatus](https://secrets-store-csi-driver.sigs.k8s.io/topics/secret-auto-rotation) records the object versions loaded by CSI. The report retains those non-secret version IDs and Pod identities, never values or tokens. It is deployment evidence in a private consumer, not a public artifact.
 
+## Qualify the stable Azure gateway through cutover and rollback
+
+The [read-only traffic qualifier](../scripts/qualify_azure_traffic.py) checks the actual Application Gateway frontend IP, every selected backend pool's health, and the web/API release over certificate-verified HTTPS. It connects directly to that observed IP while keeping the configured DNS hostname in TLS SNI and HTTP Host, so reserved `example.test` hostnames work without public DNS. It also rejects a gateway configuration change during sampling. It neither deploys an application nor changes traffic routing.
+
+Run this from a private worker that can reach the chosen frontend, with an Azure identity allowed to read the gateway, its public IP resource when applicable, and backend health. Obtain the gateway ID/IP and pool names from the applied gateway configuration. For a lab CA, use the public root certificate trusted by the frontend certificate chain; configure the gateway's separate [backend trusted roots](https://github.com/MikeeeGit/azure-application-gateway/tree/main/examples/private-ca) as well. Do not disable certificate verification. System trust is used when `--ca-file` is omitted.
+
+Keep the **same gateway, IP, web/API hostnames and CA** for all four checks. The following example uses the maintained gateway profile's `service` and `preview` pools. Both must be healthy, but the returned release assertions apply to the stable web/API listeners, not the preview listener. Qualify the candidate separately before changing the stable backend target.
+
+```bash
+# Set these from the applied private environment and successful build receipts.
+# RELEASE_V1_COMMIT and RELEASE_V2_COMMIT must be full 40-character source SHAs.
+GATEWAY_ID="<applied-application-gateway-resource-id>"
+GATEWAY_IP="<applied-frontend-ip>"
+LAB_CA="/private/trust/lab-ca.pem"
+EVIDENCE_DIR="/private/evidence/traffic-run-01"
+mkdir -p "$EVIDENCE_DIR"
+chmod 700 "$EVIDENCE_DIR"
+
+qualify_traffic() {
+  python3 scripts/qualify_azure_traffic.py \
+    --gateway-id "$GATEWAY_ID" --endpoint-ip "$GATEWAY_IP" \
+    --web-host web.example.test --api-host api.example.test \
+    --backend-pool service --backend-pool preview \
+    --ca-file "$LAB_CA" --samples 3 \
+    --step "$1" --expected-slot "$2" --revision "$3" \
+    --report "$EVIDENCE_DIR/$1.json"
+}
+
+# 1. Release V1 is serving from aks01; both slots and pools are healthy.
+qualify_traffic initial-active aks01 "$RELEASE_V1_COMMIT"
+
+# 2. Promote V2 to aks02 and qualify that candidate first. Stable stays on V1.
+qualify_traffic standby-updated-active-unchanged aks01 "$RELEASE_V1_COMMIT"
+
+# 3. Apply the reviewed gateway backend-DNS target change to aks02.
+# Run this check after observing DNS/backend convergence.
+qualify_traffic traffic-cutover aks02 "$RELEASE_V2_COMMIT"
+
+# 4. Apply a newly reviewed plan restoring the stable target to healthy aks01.
+qualify_traffic traffic-rollback aks01 "$RELEASE_V1_COMMIT"
+```
+
+These are four separate acceptance points in the deployment procedure, not four commands to run consecutively without the intervening changes. Follow the [gateway cutover/rollback procedure](https://github.com/MikeeeGit/azure-application-gateway/blob/main/docs/cutover.md) for the actual Terraform changes. Retain the old slot and its release throughout the rollback window. Updating the inactive app does not switch the stable endpoint; rolling traffic back does not redeploy the old app.
+
+Each invocation writes a new private report, including failed checks, and refuses to overwrite existing evidence. Use a new evidence directory for a repeat run. The report retains the selected gateway, public CA hash, observed backend addresses and timestamped release samples; keep it with the corresponding infrastructure plan/apply and application deployment records. A failure is not a request to disable verification: diagnose certificate names/trust, frontend selection, backend health or DNS convergence before collecting a new report.
+
+The script's tests include real local TLS requests proving CA, SNI and Host handling, plus rejection and report-handling tests. This public example does not yet include a completed live Azure qualification report. Successful private Azure runs are needed to establish the actual gateway path. The three samples are independent new connections; they do not establish zero downtime, existing-session behavior, WAF attack protection or data recovery. Gateway ETag checks do not prove that a separately managed backend DNS record stayed unchanged. The separate **CSI workload report** proves the selected slot's mounted-secret identity chain; a gateway traffic report cannot replace it, and the CSI port-forward check cannot replace this traffic check.
+
 ## Troubleshooting and proof limits
 
 | Symptom | Check |

@@ -7,9 +7,9 @@ permissions:
 jobs:
   build:
     # REPLACE both 40-zero pins with the same reviewed shared-template commit.
-    uses: MikeeeGit/aks-delivery-templates/.github/workflows/build.yml@a7e98749fe35b5dc5bc263705e8f510832ca2a08
+    uses: MikeeeGit/aks-delivery-templates/.github/workflows/build.yml@6eb3c083146afaeeacc75a2f3788ba15226fccc7
     with:
-      template-ref: 'a7e98749fe35b5dc5bc263705e8f510832ca2a08'
+      template-ref: '6eb3c083146afaeeacc75a2f3788ba15226fccc7'
       client-id: ${{ vars.AZURE_ACR_BUILD_CLIENT_ID }}
       config: delivery.gateway.apps.json
       build-environment: image-build
