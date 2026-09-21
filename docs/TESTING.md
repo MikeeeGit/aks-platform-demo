@@ -63,3 +63,10 @@ Follow [deployment verification](DELIVERY.md): confirm both Service private IPs,
 ## Azure managed identity and app-secret CSI
 
 The [Azure workload profile](AZURE-WORKLOAD.md) adds an opt-in readiness dependency and a read-only live qualifier. Local tests render both Azure overlays, test missing/empty/replaced files without serving their content, and reject incorrect cluster/identity/CSI status, stale Pod ownership, wrong revisions and unavailable readiness. Those tests do not call Azure. Run the full private build/deploy caller or the documented qualifier against both actual AKS slots to establish the cloud identity/Key Vault path. Its private report remains separate from kind evidence.
+
+
+## Runtime image security
+
+The Dockerfile pins the official Node multi-platform image by digest and tests the application in its build stage. The final image excludes npm and Yarn; they are not runtime dependencies of this application. This follows the [official Node image guidance](https://github.com/nodejs/docker-node/blob/main/docs/BestPractices.md#smaller-images-without-npmyarn).
+
+The Azure rehearsal found HIGH vulnerabilities in the earlier base image and bundled package-manager dependencies. Updating the pinned base supplies patched Alpine OpenSSL libraries; removing unused package managers reduces the runtime dependency surface. The protected build must scan the resulting immutable ACR image successfully before it emits a release receipt. A digest pin alone is not a current vulnerability assessment.
