@@ -59,3 +59,7 @@ The shared helper tests cover passed-build receipt selection/binding, exact Git 
 ## Live platform qualification
 
 Follow [deployment verification](DELIVERY.md): confirm both Service private IPs, image pull, private API access, namespace permissions, selected-slot HTTP responses, gateway backend health/TLS/WAF, and reviewed cutover/rollback. Keep local unit, kind acceptance, hosted pipeline, and live AKS evidence distinct.
+
+## Azure managed identity and app-secret CSI
+
+The [Azure workload profile](AZURE-WORKLOAD.md) adds an opt-in readiness dependency and a read-only live qualifier. Local tests render both Azure overlays, test missing/empty/replaced files without serving their content, and reject incorrect cluster/identity/CSI status, stale Pod ownership, wrong revisions and unavailable readiness. Those tests do not call Azure. Run the full private build/deploy caller or the documented qualifier against both actual AKS slots to establish the cloud identity/Key Vault path. Its private report remains separate from kind evidence.

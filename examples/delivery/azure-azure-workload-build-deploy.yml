@@ -1,0 +1,90 @@
+trigger: none
+pr: none
+parameters:
+  - name: clusterSlots
+    displayName: Selected slots in deployment order
+    type: object
+    default: [aks01]
+  - name: deploySequentially
+    displayName: Require the first slot to succeed before the second
+    type: boolean
+    default: true
+resources:
+  repositories:
+    - repository: aksTemplates
+      type: git
+      name: Platform/aks-delivery-templates # REPLACE the synthetic project name.
+      ref: 'b722c9210602482e8849730c17a11b67351d6786' # Reviewed shared-template commit; update deliberately.
+stages:
+  - template: azure-pipelines/stages/build-deploy.yml@aksTemplates
+    parameters:
+      stageName: Application
+      buildServiceConnection: example-acr-build-federated
+      deployServiceConnection: example-aks-deploy-federated
+      buildEnvironment: pprd-image-build
+      environment: pprd
+      region: uks
+      clusterSlots: ${{ parameters.clusterSlots }}
+      deploySequentially: ${{ parameters.deploySequentially }}
+      configFile: delivery.azure-workload.apps.json
+      buildPool: {vmImage: ubuntu-24.04}
+      deployPool: {name: aks-private}
+
+  - stage: AzureWorkloadQualification
+    displayName: Qualify real Azure workload identity on every selected slot
+    dependsOn:
+      - Application_Build
+      - ${{ each slot in parameters.clusterSlots }}:
+        - Application_Deploy_${{ slot }}
+    variables:
+      selectedSourceCommit: $[ stageDependencies.Application_Build.Build.outputs['Build.receipt.sourceCommit'] ]
+    jobs:
+      - ${{ each slot in parameters.clusterSlots }}:
+        - deployment: Qualify_${{ slot }}
+          environment: pprd-uks-${{ slot }}
+          pool: {name: aks-private}
+          timeoutInMinutes: 10
+          strategy:
+            runOnce:
+              deploy:
+                steps:
+                  - checkout: self
+                    path: s/app
+                    fetchDepth: 0
+                    persistCredentials: false
+                  - checkout: aksTemplates
+                    path: s/templates
+                    persistCredentials: false
+                  - bash: |
+                      set -euo pipefail
+                      test "$(git -C "$(Pipeline.Workspace)/s/app" rev-parse HEAD)" = "$SOURCE_COMMIT"
+                      python3 "$(Pipeline.Workspace)/s/templates/scripts/ci_guard.py" azure-devops --latest
+                      python3 -m venv "$(Agent.TempDirectory)/workload-python"
+                      "$(Agent.TempDirectory)/workload-python/bin/pip" install --require-hashes -r "$(Pipeline.Workspace)/s/templates/requirements.txt"
+                      python3 "$(Pipeline.Workspace)/s/templates/scripts/install_tools.py" --directory "$(Agent.TempDirectory)/workload-tools"
+                    displayName: Recheck source and install verified clients
+                    env:
+                      SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+                      SOURCE_COMMIT: $(selectedSourceCommit)
+                  - task: AzureCLI@2
+                    displayName: Verify live CSI identity and secret-dependent readiness
+                    inputs:
+                      azureSubscription: example-aks-deploy-federated
+                      scriptType: bash
+                      scriptLocation: inlineScript
+                      visibleAzLogin: false
+                      inlineScript: |
+                        set -euo pipefail
+                        export PATH="$(Agent.TempDirectory)/workload-tools:$PATH"
+                        cd "$(Pipeline.Workspace)/s/app"
+                        "$(Agent.TempDirectory)/workload-python/bin/python" scripts/qualify_azure_workload.py \
+                          --environment pprd --region uks --slot "$SLOT" --revision "$SOURCE_COMMIT" \
+                          --acquire-kubeconfig --output "$(Agent.TempDirectory)/azure-workload-$SLOT.json"
+                    env:
+                      SLOT: ${{ slot }}
+                      SOURCE_COMMIT: $(selectedSourceCommit)
+                  - task: PublishPipelineArtifact@1
+                    displayName: Retain private Azure workload result
+                    inputs:
+                      targetPath: $(Agent.TempDirectory)/azure-workload-${{ slot }}.json
+                      artifact: azure-workload-${{ slot }}

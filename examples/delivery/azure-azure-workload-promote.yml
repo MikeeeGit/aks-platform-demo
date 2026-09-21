@@ -1,0 +1,117 @@
+trigger: none
+pr: none
+parameters:
+  - name: buildRunId
+    displayName: Successful image build run ID
+    type: string
+  - name: buildDefinitionId
+    displayName: Expected trusted image build pipeline definition ID
+    type: string
+  - name: buildArtifact
+    displayName: Receipt artifact matching the selected build pipeline
+    type: string
+    default: image-release-BuildApplication
+    values: [image-release-BuildApplication, image-release-Application_Build]
+  - name: clusterSlots
+    displayName: Selected slots in deployment order
+    type: object
+    default: [aks01]
+  - name: deploySequentially
+    displayName: Require the first slot to succeed before the second
+    type: boolean
+    default: true
+resources:
+  repositories:
+    - repository: aksTemplates
+      type: git
+      name: Platform/aks-delivery-templates # REPLACE the synthetic project name.
+      ref: 'b722c9210602482e8849730c17a11b67351d6786' # Reviewed shared-template commit; update deliberately.
+stages:
+  - template: azure-pipelines/stages/promote.yml@aksTemplates
+    parameters:
+      buildRunId: ${{ parameters.buildRunId }}
+      buildDefinitionId: ${{ parameters.buildDefinitionId }}
+      buildArtifact: ${{ parameters.buildArtifact }}
+      serviceConnection: example-aks-deploy-federated
+      environment: pprd
+      region: uks
+      clusterSlots: ${{ parameters.clusterSlots }}
+      deploySequentially: ${{ parameters.deploySequentially }}
+      configFile: delivery.azure-workload.apps.json
+      pool: {name: aks-private}
+
+  - stage: AzureWorkloadQualification
+    displayName: Qualify real Azure workload identity on every selected slot
+    dependsOn:
+      - PromoteApplication_Release
+      - ${{ each slot in parameters.clusterSlots }}:
+        - PromoteApplication_${{ slot }}
+    variables:
+      selectedSourceCommit: $[ stageDependencies.PromoteApplication_Release.Resolve.outputs['release.sourceCommit'] ]
+    jobs:
+      - ${{ each slot in parameters.clusterSlots }}:
+        - deployment: Qualify_${{ slot }}
+          environment: pprd-uks-${{ slot }}
+          pool: {name: aks-private}
+          timeoutInMinutes: 10
+          strategy:
+            runOnce:
+              deploy:
+                steps:
+                  - checkout: self
+                    path: s/app
+                    fetchDepth: 0
+                    persistCredentials: false
+                  - checkout: aksTemplates
+                    path: s/templates
+                    persistCredentials: false
+                  - bash: |
+                      set -euo pipefail
+                      git -C "$(Pipeline.Workspace)/s/app" merge-base --is-ancestor "$SOURCE_COMMIT" HEAD
+                      python3 "$(Pipeline.Workspace)/s/templates/scripts/ci_guard.py" azure-devops --latest
+                      python3 -m venv "$(Agent.TempDirectory)/workload-python"
+                      "$(Agent.TempDirectory)/workload-python/bin/pip" install --require-hashes -r "$(Pipeline.Workspace)/s/templates/requirements.txt"
+                      python3 "$(Pipeline.Workspace)/s/templates/scripts/install_tools.py" --directory "$(Agent.TempDirectory)/workload-tools"
+                      python3 - <<'PY_CONTRACT'
+                      import json, os, re, subprocess
+                      from pathlib import Path
+                      revision = os.environ["SOURCE_COMMIT"]
+                      if not re.fullmatch("[0-9a-f]{40}", revision):
+                          raise SystemExit("Expected the selected release source revision")
+                      root = Path(os.environ["CONTRACT_DIR"])
+                      root.mkdir(parents=True, exist_ok=False)
+                      for filename in ["delivery.azure-workload.apps.json", "azure.workload.json"]:
+                          content = subprocess.check_output(["git", "-C", os.environ["APP_DIR"], "show", revision + ":" + filename])
+                          json.loads(content)
+                          (root / filename).write_bytes(content)
+                      PY_CONTRACT
+                    displayName: Recheck source, load selected contracts and install verified clients
+                    env:
+                      SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+                      SOURCE_COMMIT: $(selectedSourceCommit)
+                      APP_DIR: $(Pipeline.Workspace)/s/app
+                      CONTRACT_DIR: $(Agent.TempDirectory)/workload-contracts-${{ slot }}
+                  - task: AzureCLI@2
+                    displayName: Verify live CSI identity and secret-dependent readiness
+                    inputs:
+                      azureSubscription: example-aks-deploy-federated
+                      scriptType: bash
+                      scriptLocation: inlineScript
+                      visibleAzLogin: false
+                      inlineScript: |
+                        set -euo pipefail
+                        export PATH="$(Agent.TempDirectory)/workload-tools:$PATH"
+                        cd "$(Pipeline.Workspace)/s/app"
+                        "$(Agent.TempDirectory)/workload-python/bin/python" scripts/qualify_azure_workload.py \
+                          --config "$CONTRACT_DIR/delivery.azure-workload.apps.json" --workload-config "$CONTRACT_DIR/azure.workload.json" \
+                          --environment pprd --region uks --slot "$SLOT" --revision "$SOURCE_COMMIT" \
+                          --acquire-kubeconfig --output "$(Agent.TempDirectory)/azure-workload-$SLOT.json"
+                    env:
+                      SLOT: ${{ slot }}
+                      CONTRACT_DIR: $(Agent.TempDirectory)/workload-contracts-${{ slot }}
+                      SOURCE_COMMIT: $(selectedSourceCommit)
+                  - task: PublishPipelineArtifact@1
+                    displayName: Retain private Azure workload result
+                    inputs:
+                      targetPath: $(Agent.TempDirectory)/azure-workload-${{ slot }}.json
+                      artifact: azure-workload-${{ slot }}

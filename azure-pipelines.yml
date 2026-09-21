@@ -14,7 +14,7 @@ resources:
     - repository: aksTemplates
       type: git
       name: aks-delivery-templates
-      ref: 8d81e1fcee4732726fc7e5f6cafbb815c9a68243
+      ref: b722c9210602482e8849730c17a11b67351d6786
 pool:
   vmImage: ubuntu-24.04
 steps:
@@ -45,9 +45,12 @@ steps:
       "$(Agent.TempDirectory)/validation-python/bin/python" "$(Pipeline.Workspace)/s/templates/scripts/validate_gitops.py" --source "$(Pipeline.Workspace)/s/app"
       "$(Agent.TempDirectory)/validation-python/bin/python" -m unittest discover -s "$(Pipeline.Workspace)/s/app/tests" -p 'test_*.py' -v
       "$(Agent.TempDirectory)/validation-python/bin/python" "$(Pipeline.Workspace)/s/templates/scripts/delivery.py" validate --source "$(Pipeline.Workspace)/s/app"
-      for profile in direct gateway; do
+      for profile in direct gateway azure-workload; do
         if [ "$profile" = gateway ]; then
           config=delivery.gateway.apps.json
+          bootstrap=bootstrap.gateway.apps.json
+        elif [ "$profile" = azure-workload ]; then
+          config=delivery.azure-workload.apps.json
           bootstrap=bootstrap.gateway.apps.json
         else
           config=delivery.apps.json

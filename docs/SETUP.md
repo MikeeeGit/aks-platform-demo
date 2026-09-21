@@ -86,3 +86,7 @@ Private clusters require a runner with private API connectivity and DNS. Restric
 ## Custom-resource authorization boundary
 
 The shared [opt-in authorization example](https://github.com/MikeeeGit/aks-delivery-templates/tree/main/examples/authorization) provides an explicit HTTPRoute/SecretProviderClass grant recipe. Its Azure ABAC mechanism is preview and needs operator review. Namespace Writer also has broad rights over ordinary objects in the same namespace, including the platform proxy and TLS Secret; separating release ownership is not an adversarial tenant-security boundary. Use a separately reviewed tighter authorization/namespace design when that isolation is required.
+
+## Qualify the Azure workload identity path
+
+Use the additive [Azure workload identity profile](AZURE-WORKLOAD.md) when deploying the full Azure reference. Its combined callers build, deploy selected slots and verify the actual app identity/Key Vault CSI mount. The same application manifests can be delivered through the documented Argo method.

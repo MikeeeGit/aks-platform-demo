@@ -19,11 +19,13 @@ Visit `http://localhost:8080/version`. The application has no npm runtime depend
 | Endpoint | Purpose |
 | --- | --- |
 | `/healthz` | Process liveness |
-| `/readyz` | Readiness; returns 503 while draining |
+| `/readyz` | Readiness; returns 503 while draining or when an enabled secret dependency is unavailable |
 | `/version` | Application, package version, full source revision, and runtime slot |
 | `/api/healthz`, `/api/readyz`, `/api/version` | Equivalent endpoints for the gateway's API path rule |
 
 `APP_SLOT` accepts `local`, `aks01`, or `aks02`. `PORT` defaults to 8080. `SHUTDOWN_DELAY_MS` defaults to 3000; SIGTERM marks the app unready before closing connections. The source revision is baked into the image; the slot is runtime configuration.
+
+The optional `APP_REQUIRED_SECRET_FILE` setting requires a readable nonempty mounted file before readiness succeeds. The [real Azure workload identity profile](docs/AZURE-WORKLOAD.md) uses it to qualify Key Vault CSI access without exposing secret content.
 
 ## Delivery layout
 
@@ -32,6 +34,7 @@ Visit `http://localhost:8080/version`. The application has no npm runtime depend
 - [aks01 overlay](deploy/gateway-api/overlays/pprd/uks/aks01/kustomization.yaml) and [aks02 overlay](deploy/gateway-api/overlays/pprd/uks/aks02/kustomization.yaml): the same application with explicit slot metadata.
 - [Operator namespace bootstrap](deploy/bootstrap/namespace.yaml): applied separately with Pod Security admission restricted.
 - [Private pipeline examples](examples/delivery/README.md): trusted build and selected-release promotion through shared templates.
+- [Real Azure identity profile](docs/AZURE-WORKLOAD.md): coded workload identity bindings, app-secret CSI, full build/deploy callers and per-slot live qualification.
 - [Argo CD example](docs/ARGO-CD.md): reviewed GitOps proposals and per-slot reconciliation of the same rendered YAML.
 - [Smoke helper](scripts/smoke.mjs): expected slot and full revision checks over HTTP or verified HTTPS.
 

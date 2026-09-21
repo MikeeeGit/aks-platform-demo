@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: platform-demo
+spec:
+  template:
+    spec:
+      containers:
+        - name: app
+          env:
+            - name: APP_REQUIRED_SECRET_FILE
+              value: /mnt/app-secrets/qualification
+          volumeMounts:
+            - name: keyvault-application
+              mountPath: /mnt/app-secrets
+              readOnly: true
+      volumes:
+        - name: keyvault-application
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: platform-demo-app-secret

@@ -1,0 +1,153 @@
+name: Private selected image build promotion
+on:
+  workflow_dispatch:
+    inputs:
+      build-run-id:
+        description: Successful run ID from the selected trusted build workflow
+        required: true
+        type: string
+      build-workflow:
+        description: Expected workflow that produced the selected run
+        required: true
+        type: choice
+        default: image-build.yml
+        options: [image-build.yml, build-deploy.yml]
+      cluster-slots:
+        description: Selected slots in deployment order
+        required: true
+        type: choice
+        default: '["aks01"]'
+        options: ['["aks01"]', '["aks02"]', '["aks01","aks02"]', '["aks02","aks01"]']
+      deploy-sequentially:
+        description: Require the first slot to succeed before the second
+        type: boolean
+        default: true
+permissions:
+  contents: read
+  actions: read
+  id-token: write
+jobs:
+  promote:
+    # Keep both template references on the same reviewed immutable commit.
+    uses: MikeeeGit/aks-delivery-templates/.github/workflows/promote.yml@b722c9210602482e8849730c17a11b67351d6786
+    with:
+      template-ref: 'b722c9210602482e8849730c17a11b67351d6786'
+      build-run-id: ${{ inputs.build-run-id }}
+      build-workflow: ${{ inputs.build-workflow }}
+      client-id: ${{ vars.AZURE_AKS_DEPLOY_CLIENT_ID }}
+      environment: pprd
+      region: uks
+      cluster-slots: ${{ inputs.cluster-slots }}
+      deploy-sequentially: ${{ inputs.deploy-sequentially }}
+      config: delivery.azure-workload.apps.json
+      runs-on: '["self-hosted","linux","aks-private"]'
+
+  qualify:
+    name: Qualify Azure workload identity on ${{ matrix.slot }}
+    needs: promote
+    runs-on: [self-hosted, linux, aks-private]
+    environment: pprd-uks-${{ matrix.slot }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        slot: ${{ fromJSON(inputs.cluster-slots) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: app
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: MikeeeGit/aks-delivery-templates
+          ref: b722c9210602482e8849730c17a11b67351d6786
+          path: templates
+          persist-credentials: false
+      - name: Check private protected caller and install pinned clients
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRIVATE_REPOSITORY: ${{ github.event.repository.private }}
+          TEMPLATE_REF: b722c9210602482e8849730c17a11b67351d6786
+          RUNNER_LABELS: '["self-hosted","linux","aks-private"]'
+        run: |
+          set -euo pipefail
+          python3 templates/scripts/ci_guard.py github --latest
+          python3 -m venv "$RUNNER_TEMP/workload-python"
+          "$RUNNER_TEMP/workload-python/bin/pip" install --require-hashes -r templates/requirements.txt
+          python3 templates/scripts/install_tools.py --directory "$RUNNER_TEMP/workload-tools"
+      - name: Resolve the same successful build receipt used for promotion
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_RUN_ID: ${{ inputs.build-run-id }}
+          BUILD_WORKFLOW: ${{ inputs.build-workflow }}
+        run: |
+          "$RUNNER_TEMP/workload-python/bin/python" templates/scripts/releases.py github \
+            --run-id "$BUILD_RUN_ID" --definition "$BUILD_WORKFLOW" \
+            --artifact-name "image-release-$BUILD_RUN_ID" --output "$RUNNER_TEMP/qualification-release" \
+            --github-output "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.release.outputs.source_commit }}
+          path: selected-source
+          persist-credentials: false
+      - name: Resolve the selected Azure tenant and subscription
+        id: target
+        env:
+          SLOT: ${{ matrix.slot }}
+        run: |
+          python3 - <<'PY'
+          import json, os, uuid
+          from pathlib import Path
+          data = json.loads(Path("selected-source/delivery.azure-workload.apps.json").read_text())
+          targets = [t for t in data["targets"] if (t["environment"], t["region"], t["slot"]) == ("pprd", "uks", os.environ["SLOT"])]
+          if len(targets) != 1:
+              raise SystemExit("Expected one selected target")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write("tenant_id=" + str(uuid.UUID(data["tenant_id"])) + "\n")
+              output.write("subscription_id=" + str(uuid.UUID(targets[0]["subscription_id"])) + "\n")
+          PY
+      - name: Create a fresh job-scoped Azure CLI profile
+        run: |
+          set -euo pipefail
+          profile=$(mktemp -d "$RUNNER_TEMP/aks-workload-azure.XXXXXX")
+          printf 'AZURE_CONFIG_DIR=%s\n' "$profile" >> "$GITHUB_ENV"
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        env:
+          AZURE_LOGIN_POST_CLEANUP: "false"
+        with:
+          client-id: ${{ vars.AZURE_AKS_DEPLOY_CLIENT_ID }}
+          tenant-id: ${{ steps.target.outputs.tenant_id }}
+          subscription-id: ${{ steps.target.outputs.subscription_id }}
+      - name: Verify live CSI identity and secret-dependent readiness
+        working-directory: app
+        env:
+          SLOT: ${{ matrix.slot }}
+          SOURCE_COMMIT: ${{ steps.release.outputs.source_commit }}
+        run: |
+          set -euo pipefail
+          export PATH="$RUNNER_TEMP/workload-tools:$PATH"
+          "$RUNNER_TEMP/workload-python/bin/python" scripts/qualify_azure_workload.py \
+            --config ../selected-source/delivery.azure-workload.apps.json --workload-config ../selected-source/azure.workload.json \
+            --environment pprd --region uks --slot "$SLOT" --revision "$SOURCE_COMMIT" \
+            --acquire-kubeconfig --output "$RUNNER_TEMP/azure-workload-$SLOT.json"
+      - name: Retain the private Azure workload result
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: azure-workload-${{ matrix.slot }}
+          path: ${{ runner.temp }}/azure-workload-${{ matrix.slot }}.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Remove this job's Azure CLI profile
+        if: always() && env.AZURE_CONFIG_DIR != ''
+        run: |
+          python3 - <<'PY_CLEANUP'
+          import os, shutil
+          from pathlib import Path
+          profile = Path(os.environ["AZURE_CONFIG_DIR"])
+          parent = Path(os.environ["RUNNER_TEMP"]).resolve()
+          if profile.is_symlink() or profile.resolve().parent != parent or not profile.name.startswith("aks-workload-azure."):
+              raise SystemExit("Unexpected Azure profile path; cleanup stopped")
+          if profile.exists():
+              shutil.rmtree(profile)
+          PY_CLEANUP

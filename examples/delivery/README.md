@@ -34,3 +34,7 @@ Create protected approval environments `image-build`, `pprd-uks-aks01`, `pprd-uk
 For Azure DevOps selected-run promotion, use `image-release-BuildApplication` for the build-only caller and `image-release-Application_Build` for the combined caller. A renamed shared build stage changes its artifact name; keep the expected artifact input explicit.
 
 Every chosen slot consumes the same source commit and image digest. The callers select delivery.gateway.apps.json and bootstrap.gateway.apps.json. Target verification checks the application Service plus the selected Gateway's current status and actual verified HTTPS route. It still does not prove Azure ILB assignment or the WAF path. A failed check fails deployment; rollback uses a previously approved release deliberately. No application workflow changes Application Gateway DNS or active traffic.
+
+## Full Azure workload identity example
+
+The additive [Azure workload identity guide](../../docs/AZURE-WORKLOAD.md) provides complete `github-azure-workload-build-deploy.yml` and `azure-azure-workload-build-deploy.yml` callers. They use `delivery.azure-workload.apps.json`, retain the Gateway API/TLS deployment and qualify a real application Key Vault CSI mount on every selected slot after deployment. Companion `*-azure-workload-promote.yml` callers reuse existing immutable-build promotion. The build approval name is `pprd-image-build`; match it to the Terraform-managed CI federation and actual protected environment.

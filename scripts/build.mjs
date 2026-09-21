@@ -8,7 +8,7 @@ if (!/^(development|[a-f0-9]{40}|[a-f0-9]{64})$/.test(revision)) {
   throw new Error("BUILD_REVISION must be a full lowercase Git revision, or development.");
 }
 await mkdir(new URL("dist/", root), { recursive: true });
-for (const file of ["app.mjs", "main.mjs"]) {
+for (const file of ["app.mjs", "main.mjs", "workload.mjs"]) {
   execFileSync(process.execPath, ["--check", fileURLToPath(new URL("src/" + file, root))], { stdio: "inherit" });
   await copyFile(new URL("src/" + file, root), new URL("dist/" + file, root));
 }

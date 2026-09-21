@@ -29,6 +29,7 @@ import uuid
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import acceptance_gateway as gateway
+import acceptance_native_rbac as native_rbac
 
 ROOT = Path(__file__).resolve().parents[1]
 DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
@@ -318,6 +319,7 @@ class Acceptance:
         originals = {}
         for slot, cluster in zip(("aks01", "aks02"), self.clusters):
             originals[slot] = self.render(self.original_commit, first, slot, "initial-" + slot)
+            native_rbac.check(self, cluster, slot, originals[slot])
             self.apply_and_check(cluster, slot, originals[slot], self.original_commit, first, "initial")
         # A second real source revision and build are isolated to the disposable clone.
         package = json.loads((self.fixture / "package.json").read_text())

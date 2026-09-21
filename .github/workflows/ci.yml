@@ -26,7 +26,7 @@ jobs:
         if: steps.scope.outputs.run-tests == 'true'
         with:
           repository: MikeeeGit/aks-delivery-templates
-          ref: 8d81e1fcee4732726fc7e5f6cafbb815c9a68243
+          ref: b722c9210602482e8849730c17a11b67351d6786
           path: templates
           persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -55,9 +55,12 @@ jobs:
           "$RUNNER_TEMP/validation-python/bin/python" templates/scripts/validate_gitops.py --source app
           "$RUNNER_TEMP/validation-python/bin/python" -m unittest discover -s app/tests -p 'test_*.py' -v
           "$RUNNER_TEMP/validation-python/bin/python" templates/scripts/delivery.py validate --source app
-          for profile in direct gateway; do
+          for profile in direct gateway azure-workload; do
             if [ "$profile" = gateway ]; then
               config=delivery.gateway.apps.json
+              bootstrap=bootstrap.gateway.apps.json
+            elif [ "$profile" = azure-workload ]; then
+              config=delivery.azure-workload.apps.json
               bootstrap=bootstrap.gateway.apps.json
             else
               config=delivery.apps.json
@@ -116,7 +119,7 @@ jobs:
         if: steps.scope.outputs.run-tests == 'true'
         with:
           repository: MikeeeGit/aks-delivery-templates
-          ref: 8d81e1fcee4732726fc7e5f6cafbb815c9a68243
+          ref: b722c9210602482e8849730c17a11b67351d6786
           path: templates
           persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6

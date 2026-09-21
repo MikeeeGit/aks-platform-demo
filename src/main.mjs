@@ -15,6 +15,7 @@ const { server, setReady } = createApp({
   version: build.version,
   revision: build.revision,
   slot: process.env.APP_SLOT || "local",
+  requiredSecretFile: process.env.APP_REQUIRED_SECRET_FILE,
 });
 server.listen(port, "0.0.0.0", () => {
   console.log(JSON.stringify({ event: "listening", application: build.name, port, version: build.version, revision: build.revision }));

@@ -12,6 +12,8 @@ The recommended full profile is [delivery.gateway.apps.json](../delivery.gateway
 
 The profiles are alternatives for the same application. Do not apply both overlays to the same Deployment, and do not reuse a frontend address owned by another Service. Their resource lists differ; apply is not automatic pruning. During migration, keep the active old slot intact and first use the maintained profile on an inactive slot with a distinct candidate address.
 
+For actual Azure application-secret access and a complete identity qualification job, use the additive [Azure workload identity profile](AZURE-WORKLOAD.md). It retains this Gateway/TLS path and adds an app-secret CSI mount and secret-dependent readiness.
+
 ## Ownership and prerequisites
 
 The maintained platform contract is Envoy Gateway 1.9.1, Gateway API 1.6.1, controller namespace `envoy-gateway-system` and GatewayClass `envoy-gateway`. Platform-owned `Gateway/platform-demo-private` lives in `platform-demo` with listeners `https-web` and `https-api`. Its Envoy data plane uses GatewayNamespace mode. The app-owned `HTTPRoute/platform-demo` attaches to those listeners and routes `web.example.test` and `api.example.test` to `Service/platform-demo:80`.

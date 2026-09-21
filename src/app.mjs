@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
+import { requiredFileReady } from "./workload.mjs";
 
-export function createApp({ version, revision, slot = "local" }) {
+export function createApp({ version, revision, slot = "local", requiredSecretFile }) {
   if (!version || !revision || !["local", "aks01", "aks02"].includes(slot)) {
     throw new Error("Provide build version/revision and an allowed application slot.");
   }
@@ -11,6 +12,7 @@ export function createApp({ version, revision, slot = "local" }) {
     slot,
   });
   let ready = true;
+  const dependencyReady = requiredFileReady(requiredSecretFile);
 
   const server = createServer((request, response) => {
     const send = (status, value, extraHeaders = {}) => {
@@ -49,7 +51,13 @@ export function createApp({ version, revision, slot = "local" }) {
         send(200, { status: "ok" });
         break;
       case "/readyz":
-        send(ready ? 200 : 503, { status: ready ? "ready" : "draining" });
+        if (!ready) {
+          send(503, { status: "draining" });
+        } else if (!dependencyReady()) {
+          send(503, { status: "dependency_unavailable" });
+        } else {
+          send(200, { status: "ready" });
+        }
         break;
       case "/version":
         send(200, identity);

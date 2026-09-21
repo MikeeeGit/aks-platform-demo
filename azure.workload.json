@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "targets": [
+    {
+      "environment": "pprd",
+      "region": "uks",
+      "slot": "aks01",
+      "client_id": "00000000-0000-0000-0000-000000000201",
+      "tenant_id": "00000000-0000-0000-0000-000000000001",
+      "vault_name": "example-platform-app",
+      "secret_name": "platform-demo-qualification",
+      "service_account": "platform-demo",
+      "secret_provider_class": "platform-demo-app-secret"
+    },
+    {
+      "environment": "pprd",
+      "region": "uks",
+      "slot": "aks02",
+      "client_id": "00000000-0000-0000-0000-000000000201",
+      "tenant_id": "00000000-0000-0000-0000-000000000001",
+      "vault_name": "example-platform-app",
+      "secret_name": "platform-demo-qualification",
+      "service_account": "platform-demo",
+      "secret_provider_class": "platform-demo-app-secret"
+    }
+  ]
+}
