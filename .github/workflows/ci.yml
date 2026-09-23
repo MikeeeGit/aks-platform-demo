@@ -48,7 +48,7 @@ jobs:
           python3 -m venv "$RUNNER_TEMP/validation-python"
           "$RUNNER_TEMP/validation-python/bin/pip" install --require-hashes -r templates/requirements.txt
           python3 templates/scripts/install_tools.py --directory "$RUNNER_TEMP/aks-tools"
-      - name: Validate application overlays and render both slots
+      - name: Validate application overlays and render both target clusters
         if: steps.scope.outputs.run-tests == 'true'
         run: |
           export PATH="$RUNNER_TEMP/aks-tools:$PATH"

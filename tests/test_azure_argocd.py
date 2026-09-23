@@ -102,6 +102,21 @@ class ArgoAzureGuards(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     adapter.validate_source(Path("."), "a"*40)
 
+    def test_uncommitted_gitops_configuration_stops_before_cloud_access(self):
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock
+        with tempfile.TemporaryDirectory() as folder:
+            args = SimpleNamespace(source=Path(folder), gitops_commit="a"*40,
+                                   environment="pprd", region="uks")
+            shared = MagicMock()
+            shared.load_config.return_value = {"revision": "main", "repository_url": "changed"}
+            with patch.object(adapter, "validate_source"), \
+                 patch.object(adapter, "committed", return_value={"revision": "main", "repository_url": "approved"}), \
+                 patch.object(adapter, "command") as cloud:
+                with self.assertRaisesRegex(ValueError, "committed version"):
+                    adapter.execute(args, shared)
+            cloud.assert_not_called()
+
     def test_azure_gitops_callers_use_cloud_profile_and_new_target_names(self):
         for host in ("azure", "github"):
             proposal = (ROOT / f"examples/delivery/{host}-azure-workload-gitops-propose.yml").read_text()

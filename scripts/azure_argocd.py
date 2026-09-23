@@ -123,6 +123,10 @@ def execute(args, gitops):
          re.fullmatch(r"[a-z0-9][a-z0-9-]*", args.region), "Invalid environment/region")
     config_path = source / "gitops.config.json"
     config = gitops.load_config(config_path)
+    need(config == committed(source, args.gitops_commit, "gitops.config.json"),
+         "GitOps configuration differs from the approved committed version")
+    need(config["revision"] == os.environ.get("DEPLOYMENT_BRANCH", "main"),
+         "GitOps source must track the protected deployment branch")
     bundle = source / "gitops/releases" / args.environment / args.region / args.target_cluster
     receipt = None
     revision = args.gitops_commit

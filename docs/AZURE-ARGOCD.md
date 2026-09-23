@@ -87,6 +87,22 @@ Restrict approvers and the allowed main branch. Install/bootstrap/retire are
 platform operations. Review the install artifact before approving its deployment
 job; the job verifies the earlier stage's receipt checksum.
 
+GitHub required-reviewer availability depends on the plan for private repositories.
+Verify the [environment protection requirements](https://github.com/MikeeeGit/terraform-delivery-templates/blob/main/docs/azure/github-actions.md)
+before enabling writes. If the required gates are unavailable, use the protected
+Azure DevOps route; an environment name alone does not enforce approval.
+
+Add the actual new GitHub environments to the existing **platform.github_environments**
+and **application.github_environments** maps in the private
+[delivery-identities Terraform root](https://github.com/MikeeeGit/terraform-delivery-templates/tree/main/initial-setup/azure/delivery-identities).
+Keep all existing entries. Platform gains install/bootstrap/retire for each target
+cluster; application gains sync/verify for each target cluster. Use the actual
+repository OIDC segment and apply the reviewed identity plan. For Azure DevOps,
+add only the new lifecycle definition ID to the relevant **lab** connection's
+pipeline authorization list in the separate
+[connection Terraform root](https://github.com/MikeeeGit/terraform-delivery-templates/tree/main/initial-setup/azure/azure-devops-connections).
+Do not update unrelated connection states.
+
 Proposal jobs retain separate Git PR publishing permissions and have no AKS
 credentials. For GitHub proposal writes, configure the scoped **GITOPS_PR_TOKEN**
 described in the shared Argo deployment guide.
