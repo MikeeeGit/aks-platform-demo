@@ -1,0 +1,166 @@
+# Private consumer only; configure protected environments and the declared identities.
+name: Private Azure Argo lifecycle
+'on':
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Reviewed Argo operation
+        type: choice
+        required: true
+        default: verify
+        options:
+        - install
+        - bootstrap
+        - sync
+        - verify
+        - retire
+      target-cluster:
+        description: Target AKS cluster
+        type: choice
+        required: true
+        default: aks02
+        options:
+        - aks01
+        - aks02
+      gitops-commit:
+        description: Approved full main-branch commit
+        type: string
+        required: true
+      release-sha256:
+        description: Approved release.json SHA256; unused for install
+        type: string
+        required: false
+permissions:
+  contents: read
+env:
+  PRIVATE_REPOSITORY: ${{ github.event.repository.private }}
+  TEMPLATE_REF: 9fd0d6bd2e860c3f2e6a6aae4f154c8d3d309179
+  RUNNER_LABELS: '["self-hosted","linux","aks-private"]'
+jobs:
+  prepare:
+    if: inputs.action == 'install'
+    runs-on: ubuntu-24.04
+    outputs:
+      sha: ${{ steps.receipt.outputs.sha }}
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        path: app
+        fetch-depth: 0
+        persist-credentials: false
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        repository: MikeeeGit/aks-delivery-templates
+        ref: 9fd0d6bd2e860c3f2e6a6aae4f154c8d3d309179
+        path: templates
+        persist-credentials: false
+    - name: Prepare pinned platform artifact
+      id: receipt
+      run: |
+        set -euo pipefail
+        python3 templates/scripts/ci_guard.py github --latest
+        python3 -m venv "$RUNNER_TEMP/argo-python"
+        "$RUNNER_TEMP/argo-python/bin/pip" install --require-hashes -r templates/requirements.txt
+        python3 templates/scripts/install_tools.py --directory "$RUNNER_TEMP/argo-tools"
+        test "$(git -C app rev-parse HEAD)" = "$APPROVED_COMMIT"
+        "$RUNNER_TEMP/argo-python/bin/python" templates/scripts/argocd_bootstrap.py prepare --namespace argocd --app-namespace platform-demo --profile evaluation --output "$RUNNER_TEMP/argo-platform"
+        echo "sha=$(sha256sum "$RUNNER_TEMP/argo-platform/bootstrap.json" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+      env:
+        GH_TOKEN: ${{ github.token }}
+        APPROVED_COMMIT: ${{ inputs.gitops-commit }}
+    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: argo-platform
+        path: ${{ runner.temp }}/argo-platform/
+        retention-days: 7
+  operate:
+    needs:
+    - prepare
+    if: always() && !cancelled() && (needs.prepare.result == 'success' || (inputs.action != 'install' && needs.prepare.result
+      == 'skipped'))
+    runs-on:
+    - self-hosted
+    - linux
+    - aks-private
+    timeout-minutes: 45
+    environment: argocd-${{ inputs.action }}-pprd-uks-${{ inputs.target-cluster }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        path: app
+        fetch-depth: 0
+        persist-credentials: false
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        repository: MikeeeGit/aks-delivery-templates
+        ref: 9fd0d6bd2e860c3f2e6a6aae4f154c8d3d309179
+        path: templates
+        persist-credentials: false
+    - name: Recheck private source and install clients
+      run: |
+        set -euo pipefail
+        python3 templates/scripts/ci_guard.py github --latest
+        python3 -m venv "$RUNNER_TEMP/argo-python"
+        "$RUNNER_TEMP/argo-python/bin/pip" install --require-hashes -r templates/requirements.txt
+        python3 templates/scripts/install_tools.py --directory "$RUNNER_TEMP/argo-tools"
+      env:
+        GH_TOKEN: ${{ github.token }}
+    - name: Isolate Azure login
+      run: |
+        set -euo pipefail
+        profile=$(mktemp -d "$RUNNER_TEMP/argo-azure.XXXXXX")
+        echo "AZURE_CONFIG_DIR=$profile" >> "$GITHUB_ENV"
+    - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906
+      with:
+        client-id: ${{ (inputs.action == 'sync' || inputs.action == 'verify') && vars.AZURE_AKS_DEPLOY_CLIENT_ID || vars.AZURE_AKS_BOOTSTRAP_CLIENT_ID
+          }}
+        tenant-id: ${{ vars.AZURE_TENANT_ID }}
+        subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      env:
+        AZURE_LOGIN_POST_CLEANUP: 'false'
+    - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      if: inputs.action == 'install'
+      with:
+        name: argo-platform
+        path: ${{ runner.temp }}/argo-platform
+    - name: Operate and qualify selected Azure Argo target
+      run: |
+        set -euo pipefail
+        export PATH="$RUNNER_TEMP/argo-tools:$PATH"
+        set -- "$ACTION" --source "$GITHUB_WORKSPACE/app" --templates "$GITHUB_WORKSPACE/templates" --gitops-commit "$APPROVED_COMMIT" --target-cluster "$TARGET_CLUSTER" --output "$RUNNER_TEMP/azure-argocd-result.json"
+        if [ "$ACTION" = install ]; then
+          set -- "$@" --platform-bundle "$RUNNER_TEMP/argo-platform" --platform-sha256 "$PLATFORM_SHA"
+        else
+          set -- "$@" --release-sha256 "$RELEASE_SHA"
+        fi
+        "$RUNNER_TEMP/argo-python/bin/python" app/scripts/azure_argocd.py "$@"
+      env:
+        ACTION: ${{ inputs.action }}
+        TARGET_CLUSTER: ${{ inputs.target-cluster }}
+        APPROVED_COMMIT: ${{ inputs.gitops-commit }}
+        RELEASE_SHA: ${{ inputs.release-sha256 }}
+        PLATFORM_SHA: ${{ needs.prepare.outputs.sha }}
+        ARGO_GIT_USERNAME: ${{ inputs.action == 'install' && secrets.ARGO_GIT_USERNAME || '' }}
+        ARGO_GIT_READ_TOKEN: ${{ inputs.action == 'install' && secrets.ARGO_GIT_READ_TOKEN || '' }}
+    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: azure-argocd-${{ inputs.action }}-${{ inputs.target-cluster }}
+        path: ${{ runner.temp }}/azure-argocd-result.json
+        retention-days: 7
+    - name: Remove only this job Azure profile
+      if: always()
+      run: |
+        python3 - <<'PY_CLEANUP'
+        import os
+        from pathlib import Path
+        import shutil
+        value = os.environ.get("AZURE_CONFIG_DIR")
+        if value:
+            profile, parent = Path(value), Path(os.environ["RUNNER_TEMP"]).resolve()
+            if profile.is_symlink() or profile.resolve().parent != parent or not profile.name.startswith("argo-azure."):
+                raise SystemExit("Unexpected Azure profile; cleanup refused")
+            shutil.rmtree(profile)
+        PY_CLEANUP

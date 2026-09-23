@@ -2,14 +2,14 @@ name: Private build and selected slot deployment
 on:
   workflow_dispatch:
     inputs:
-      cluster-slots:
-        description: Selected slots in deployment order
+      target-clusters:
+        description: Selected clusters in deployment order
         required: true
         type: choice
         default: '["aks01"]'
         options: ['["aks01"]', '["aks02"]', '["aks01","aks02"]', '["aks02","aks01"]']
       deploy-sequentially:
-        description: Require the first slot to succeed before the second
+        description: Require the first cluster to succeed before the second
         type: boolean
         default: true
 permissions:
@@ -18,24 +18,24 @@ permissions:
 jobs:
   build:
     # Keep all template references on the same reviewed immutable commit.
-    uses: MikeeeGit/aks-delivery-templates/.github/workflows/build.yml@f0034fd0f5a4f56271c514c439ca0e3795c56aae
+    uses: MikeeeGit/aks-delivery-templates/.github/workflows/build.yml@9fd0d6bd2e860c3f2e6a6aae4f154c8d3d309179
     with:
-      template-ref: 'f0034fd0f5a4f56271c514c439ca0e3795c56aae'
+      template-ref: '9fd0d6bd2e860c3f2e6a6aae4f154c8d3d309179'
       client-id: ${{ vars.AZURE_ACR_BUILD_CLIENT_ID }}
       config: delivery.azure-workload.apps.json
       build-environment: pprd-image-build
   deploy:
     needs: build
-    uses: MikeeeGit/aks-delivery-templates/.github/workflows/deploy-selected.yml@f0034fd0f5a4f56271c514c439ca0e3795c56aae
+    uses: MikeeeGit/aks-delivery-templates/.github/workflows/deploy-selected.yml@9fd0d6bd2e860c3f2e6a6aae4f154c8d3d309179
     with:
-      template-ref: 'f0034fd0f5a4f56271c514c439ca0e3795c56aae'
+      template-ref: '9fd0d6bd2e860c3f2e6a6aae4f154c8d3d309179'
       source-commit: ${{ needs.build.outputs.source-commit }}
       image-digest: ${{ needs.build.outputs.image-digest }}
       client-id: ${{ vars.AZURE_AKS_DEPLOY_CLIENT_ID }}
       config: delivery.azure-workload.apps.json
       environment: pprd
       region: uks
-      cluster-slots: ${{ inputs.cluster-slots }}
+      target-clusters: ${{ inputs.target-clusters }}
       deploy-sequentially: ${{ inputs.deploy-sequentially }}
       runs-on: '["self-hosted","linux","aks-private"]'
 
@@ -48,7 +48,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        slot: ${{ fromJSON(inputs.cluster-slots) }}
+        slot: ${{ fromJSON(inputs.target-clusters) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -58,14 +58,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: MikeeeGit/aks-delivery-templates
-          ref: f0034fd0f5a4f56271c514c439ca0e3795c56aae
+          ref: 9fd0d6bd2e860c3f2e6a6aae4f154c8d3d309179
           path: templates
           persist-credentials: false
       - name: Check private protected caller and install pinned clients
         env:
           GH_TOKEN: ${{ github.token }}
           PRIVATE_REPOSITORY: ${{ github.event.repository.private }}
-          TEMPLATE_REF: f0034fd0f5a4f56271c514c439ca0e3795c56aae
+          TEMPLATE_REF: 9fd0d6bd2e860c3f2e6a6aae4f154c8d3d309179
           RUNNER_LABELS: '["self-hosted","linux","aks-private"]'
         run: |
           set -euo pipefail

@@ -10,7 +10,7 @@ python3 -m venv .venv
 .venv/bin/python -m unittest discover -s tests -p 'test_*.py' -v
 ```
 
-The manifest tests require kubectl in PATH, or `KUBECTL_BIN` set to its pinned executable. Node tests exercise the actual built HTTP process and shutdown, plus explicit Host/slot/revision smoke checks. Python tests render both Kustomize overlays and verify the harness's digest and cleanup failure behavior. These checks make no Kubernetes API calls.
+The manifest tests require kubectl in PATH, or `KUBECTL_BIN` set to its pinned executable. Node tests exercise the actual built HTTP process and shutdown, plus explicit Host/cluster/revision smoke checks. Python tests render both Kustomize overlays and verify the harness's digest and cleanup failure behavior. These checks make no Kubernetes API calls.
 
 ## Two real Kubernetes clusters
 
@@ -25,9 +25,9 @@ Run from a committed app checkout, with a reviewed shared delivery checkout:
 The harness:
 
 1. Clones the selected app commit into a disposable fixture and creates a local registry plus two uniquely named kind clusters.
-2. Builds and pushes a real application image, verifies its registry content digest, and renders both slot bundles using the actual shared delivery helper.
+2. Builds and pushes a real application image, verifies its registry content digest, and renders both cluster bundles using the actual shared delivery helper.
 3. Installs real pinned Gateway API/Envoy CRDs and the Envoy controller on both clusters; creates local-only CA/certificate material, then performs server validation, apply and rollout checks for each app bundle.
-4. Checks both the selected app Service and actual Envoy HTTPS path, current-generation Gateway/HTTPRoute status, web/API health, slot and full revision. TLS uses the temporary trusted CA, real SNI/Host checks and a negative hostname test.
+4. Checks both the selected app Service and actual Envoy HTTPS path, current-generation Gateway/HTTPRoute status, web/API health, cluster and full revision. TLS uses the temporary trusted CA, real SNI/Host checks and a negative hostname test.
 5. Creates a second source revision and real image in the disposable clone, updates only aks02, and checks its new release.
 6. Reapplies the original approved aks02 bundle, verifies rollback, and checks aks01 without changing it.
 7. Deletes its own clusters, registry container, and local image tags; writes a JSON report including failures, tool versions, digests, revisions, and completed checks.
@@ -48,7 +48,7 @@ The additional [Argo harness](../scripts/test_argocd_dual_cluster.py) uses the s
 
 It creates two independent clusters and installs real pinned Argo controllers, Envoy and metrics-server. A temporary read-only Git HTTP service is bound only to the run's Docker bridge; production GitOps configuration requires HTTPS. Argo alone applies application workloads from the committed plain manifest. The existing Kustomize renderer prepares those manifests upstream.
 
-The report records initial reconciliation on both slots, a new real image promoted only to aks02, Git-based rollback, rejection of an invalid Deployment and recovery, manual live drift detected as OutOfSync and repaired from Git, and unchanged active-slot image/source. Each successful release requires exact operation revision, Synced/Healthy status, rollout, real app responses and verified Envoy HTTPS. HPA metrics/conditions and impersonated controller authorization checks are recorded separately. Positive RBAC checks include application custom-resource permissions; denial checks include Secrets, Roles, Gateways, other namespaces and cluster administration.
+The report records initial reconciliation on both clusters, a new real image promoted only to aks02, Git-based rollback, rejection of an invalid Deployment and recovery, manual live drift detected as OutOfSync and repaired from Git, and unchanged active-cluster image/source. Each successful release requires exact operation revision, Synced/Healthy status, rollout, real app responses and verified Envoy HTTPS. HPA metrics/conditions and impersonated controller authorization checks are recorded separately. Positive RBAC checks include application custom-resource permissions; denial checks include Secrets, Roles, Gateways, other namespaces and cluster administration.
 
 The kind fixture uses a local TLS Secret instead of Azure CSI. Its absent CSI custom resource is authorization-tested through an explicit SelfSubjectAccessReview, not claimed as an installed or exercised CSI provider. The metrics-server fixture uses an explicitly test-only insecure kubelet TLS option for kind's node certificate; production settings are unchanged. Kind's default networking does not qualify Azure NetworkPolicy enforcement.
 
@@ -58,13 +58,13 @@ The shared helper tests cover passed-build receipt selection/binding, exact Git 
 
 ## Live platform qualification
 
-Follow [deployment verification](DELIVERY.md): confirm both Service private IPs, image pull, private API access, namespace permissions, selected-slot HTTP responses, gateway backend health/TLS/WAF, and reviewed cutover/rollback. Keep local unit, kind acceptance, hosted pipeline, and live AKS evidence distinct.
+Follow [deployment verification](DELIVERY.md): confirm both Service private IPs, image pull, private API access, namespace permissions, selected-cluster HTTP responses, gateway backend health/TLS/WAF, and reviewed cutover/rollback. Keep local unit, kind acceptance, hosted pipeline, and live AKS evidence distinct.
 
 ## Azure managed identity and app-secret CSI
 
-The [21 September 2026 Azure qualification record](https://github.com/MikeeeGit/terraform-delivery-templates/blob/main/docs/azure/qualification-2026-09-21.md) records successful private Azure DevOps builds/scans, application deployment and live CSI readiness on both AKS slots, standby-only promotion and WAF traffic switch/rollback. The [run list](https://github.com/MikeeeGit/terraform-delivery-templates/blob/main/docs/azure/quick-runbook.md) links the deployment and removal actions. This cloud record is separate from the kind direct/Argo reports.
+The [21 September 2026 Azure qualification record](https://github.com/MikeeeGit/terraform-delivery-templates/blob/main/docs/azure/qualification-2026-09-21.md) records successful private Azure DevOps builds/scans, application deployment and live CSI readiness on both AKS clusters, standby-only promotion and WAF traffic switch/rollback. The [run list](https://github.com/MikeeeGit/terraform-delivery-templates/blob/main/docs/azure/quick-runbook.md) links the deployment and removal actions. This cloud record is separate from the kind direct/Argo reports.
 
-The [Azure workload profile](AZURE-WORKLOAD.md) adds an opt-in readiness dependency and a read-only live qualifier. Local tests render both Azure overlays, test missing/empty/replaced files without serving their content, and reject incorrect cluster/identity/CSI status, stale Pod ownership, wrong revisions and unavailable readiness. Those tests do not call Azure. Run the full private build/deploy caller or the documented qualifier against both actual AKS slots to establish the cloud identity/Key Vault path. Its private report remains separate from kind evidence.
+The [Azure workload profile](AZURE-WORKLOAD.md) adds an opt-in readiness dependency and a read-only live qualifier. Local tests render both Azure overlays, test missing/empty/replaced files without serving their content, and reject incorrect cluster/identity/CSI status, stale Pod ownership, wrong revisions and unavailable readiness. Those tests do not call Azure. Run the full private build/deploy caller or the documented qualifier against both actual AKS clusters to establish the cloud identity/Key Vault path. Its private report remains separate from kind evidence.
 
 
 ## Runtime image security
@@ -72,3 +72,7 @@ The [Azure workload profile](AZURE-WORKLOAD.md) adds an opt-in readiness depende
 The Dockerfile pins the official Node multi-platform image by digest and tests the application in its build stage. The final image excludes npm and Yarn; they are not runtime dependencies of this application. This follows the [official Node image guidance](https://github.com/nodejs/docker-node/blob/main/docs/BestPractices.md#smaller-images-without-npmyarn).
 
 The Azure rehearsal found HIGH vulnerabilities in the earlier base image and bundled package-manager dependencies. Updating the pinned base supplies patched Alpine OpenSSL libraries; removing unused package managers reduces the runtime dependency surface. The protected build must scan the resulting immutable ACR image successfully before it emits a release receipt. A digest pin alone is not a current vulnerability assessment.
+
+## Azure Argo adapter coverage
+
+Adapter tests reject stale source, foreign targets, unobserved identities, unsafe retirement and mismatched Git credentials. Real Argo kind acceptance uses the generated limited sync identity and checks that retirement preserves the Deployment UID. This does not claim Azure federation/CSI qualification; record the separate [Azure Argo run](AZURE-ARGOCD.md) before claiming a cloud pass.

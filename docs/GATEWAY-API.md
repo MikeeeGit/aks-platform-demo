@@ -1,6 +1,6 @@
 # Maintained Gateway API application profile
 
-The additional [Argo CD deployment guide](ARGO-CD.md) reuses this same infrastructure, Gateway API profile and application configuration. Choose either direct application deployment or Argo ownership for each slot.
+The additional [Argo CD deployment guide](ARGO-CD.md) reuses this same infrastructure, Gateway API profile and application configuration. Choose either direct application deployment or Argo ownership for each cluster.
 
 The recommended full profile is [delivery.gateway.apps.json](../delivery.gateway.apps.json), with [bootstrap.gateway.apps.json](../bootstrap.gateway.apps.json) and the [Gateway API Kustomize base](../deploy/gateway-api/base/kustomization.yaml). Private pipeline examples select these files. The independent platform consumer installs Envoy Gateway; application delivery creates an HTTPRoute, not the controller or listener.
 
@@ -10,7 +10,7 @@ The recommended full profile is [delivery.gateway.apps.json](../delivery.gateway
 | Direct Service | Lightweight one-app example using `delivery.apps.json` | App LoadBalancer Service; aks01 .20 / aks02 .20 |
 | `ingress-compat` | Archived retired community ingress-nginx behavior for migration comparison only | Legacy controller; never a new default |
 
-The profiles are alternatives for the same application. Do not apply both overlays to the same Deployment, and do not reuse a frontend address owned by another Service. Their resource lists differ; apply is not automatic pruning. During migration, keep the active old slot intact and first use the maintained profile on an inactive slot with a distinct candidate address.
+The profiles are alternatives for the same application. Do not apply both overlays to the same Deployment, and do not reuse a frontend address owned by another Service. Their resource lists differ; apply is not automatic pruning. During migration, keep the active old cluster intact and first use the maintained profile on an inactive cluster with a distinct candidate address.
 
 For actual Azure application-secret access and a complete identity qualification job, use the additive [Azure workload identity profile](AZURE-WORKLOAD.md). It retains this Gateway/TLS path and adds an app-secret CSI mount and secret-dependent readiness.
 
@@ -42,7 +42,7 @@ CSI node/provider components fetch Key Vault outside the application's pod netwo
 
 ## Verification and cutover
 
-`verification.ingress` binds the Gateway name, HTTPRoute name and expected hostnames. The shared helper verifies current-generation Gateway `Programmed` and HTTPRoute `Accepted`/`ResolvedRefs`, discovers the owning proxy Service and verifies HTTPS for the exact slot/revision with SNI and trust checking. For private CA certificates, add `ca_file` under `verification.ingress` pointing to a committed public CA bundle, such as `deploy/trust/backend-ca.crt`. Never put a private key there.
+`verification.ingress` binds the Gateway name, HTTPRoute name and expected hostnames. The shared helper verifies current-generation Gateway `Programmed` and HTTPRoute `Accepted`/`ResolvedRefs`, discovers the owning proxy Service and verifies HTTPS for the exact cluster/revision with SNI and trust checking. For private CA certificates, add `ca_file` under `verification.ingress` pointing to a committed public CA bundle, such as `deploy/trust/backend-ca.crt`. Never put a private key there.
 
 That check uses port-forwarding and does not establish an Azure ILB allocation or network path. Confirm the actual Service status IP, then test HTTPS from an allowed private source and through Application Gateway's preview route. See [delivery and cutover](DELIVERY.md), the shared [migration guide](https://github.com/MikeeeGit/aks-delivery-templates/blob/main/docs/ingress-migration.md), and the [Gateway API decision](https://github.com/MikeeeGit/aks-delivery-templates/blob/main/docs/decisions/0001-gateway-api.md).
 

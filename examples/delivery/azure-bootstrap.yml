@@ -1,7 +1,7 @@
 trigger: none
 pr: none
 parameters:
-  - name: clusterSlots
+  - name: targetClusters
     displayName: Selected clusters requiring platform-owned application bootstrap
     type: object
     default: [aks01]
@@ -10,14 +10,14 @@ resources:
     - repository: aksTemplates
       type: git
       name: Platform/aks-delivery-templates # REPLACE the synthetic project name.
-      ref: 'f0034fd0f5a4f56271c514c439ca0e3795c56aae' # Reviewed shared-template commit; update deliberately.
+      ref: '9fd0d6bd2e860c3f2e6a6aae4f154c8d3d309179' # Reviewed shared-template commit; update deliberately.
 stages:
   - template: azure-pipelines/stages/bootstrap.yml@aksTemplates
     parameters:
       serviceConnection: example-aks-bootstrap-federated
       environment: pprd
       region: uks
-      clusterSlots: ${{ parameters.clusterSlots }}
+      targetClusters: ${{ parameters.targetClusters }}
       configFile: delivery.gateway.apps.json
       bootstrapConfigFile: bootstrap.gateway.apps.json
       pool: {name: aks-private}

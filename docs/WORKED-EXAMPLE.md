@@ -21,7 +21,7 @@ flowchart LR
 | Platform | The real shared platform prepare/apply engine, using a committed copy of the maintained Envoy profile | Receipt hashes, template revision, CRDs, safe-upgrade policies, controller and Gateway |
 | Application, direct | The real shared renderer and deployment engine, using the scoped synthetic application user | Immutable digest, source revision, actual API permissions, rollout and HTTPS |
 | Application, Argo | Shared rendered GitOps proposal followed by real Argo reconciliation | Git revision, sync operation, health, runtime revision, rejection/recovery and drift checks |
-| Traffic | One loopback TCP listener forwards to the selected cluster's real Envoy TLS endpoint | Same endpoint, verified TLS hostname, returned slot and revision before/after switching |
+| Traffic | One loopback TCP listener forwards to the selected cluster's real Envoy TLS endpoint | Same endpoint, verified TLS hostname, returned cluster and revision before/after switching |
 | Removal | Close forwards/listener, delete only the run's kind clusters/registry/image tags | Empty cleanup error list; failed cleanup makes the run fail |
 
 Kind is the infrastructure adapter for this test. It does **not** run Azure Terraform or emulate Entra, Key Vault CSI, private DNS, Application Gateway, WAF or Azure network-policy behavior. Synthetic Kubernetes impersonation tests the declared platform/application permissions; it does not qualify Azure login. Temporary local certificates replace the Azure certificate source.
@@ -48,7 +48,7 @@ The same launcher is exercised by [GitHub Actions](../.github/workflows/ci.yml) 
 
 1. **Create infrastructure.** The runner names its two clusters `aks-demo-<run-id>-aks01` and `aks-demo-<run-id>-aks02`. Their registry mirror is configured only inside those disposable nodes.
 2. **Install the platform.** An owned kind administrator establishes the generated, opt-in platform binding. The shared platform engine then operates as that synthetic platform user, installing the pinned CRDs, controller and Gateway configuration.
-3. **Deploy release 1 to both slots.** The direct route uses the generated namespace-scoped application Role. The Argo route lets its scoped controller reconcile the application. Both must pass actual runtime and HTTPS checks.
+3. **Deploy release 1 to both clusters.** The direct route uses the generated namespace-scoped application Role. The Argo route lets its scoped controller reconcile the application. Both must pass actual runtime and HTTPS checks.
 4. **Establish the stable endpoint.** The endpoint initially serves aks01/release 1. TLS still terminates in the selected cluster's Envoy proxy and is checked against the expected hostname.
 5. **Deploy release 2 to aks02.** A second source commit produces a distinct immutable image. The stable endpoint must continue serving aks01/release 1.
 6. **Switch traffic to aks02.** Change only the relay's selected backend. Requests to the same endpoint must now return aks02/release 2.

@@ -11,5 +11,5 @@ jobs:
     with:
       template-ref: '9fd0d6bd2e860c3f2e6a6aae4f154c8d3d309179'
       client-id: ${{ vars.AZURE_ACR_BUILD_CLIENT_ID }}
-      config: delivery.gateway.apps.json
+      config: delivery.azure-workload.apps.json
       build-environment: image-build

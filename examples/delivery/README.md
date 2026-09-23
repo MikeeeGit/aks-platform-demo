@@ -6,7 +6,7 @@ These files are intentionally outside active workflow locations. Copy them into 
 | --- | --- | --- |
 | Platform-owned namespace and deployment-access bootstrap | [github-bootstrap.yml](github-bootstrap.yml) | [azure-bootstrap.yml](azure-bootstrap.yml) |
 | Build once without deploying | [github-build.yml](github-build.yml) | [azure-build.yml](azure-build.yml) |
-| Build once and deploy the current release to selected slots | [github-build-deploy.yml](github-build-deploy.yml) | [azure-build-deploy.yml](azure-build-deploy.yml) |
+| Build once and deploy the current release to selected clusters | [github-build-deploy.yml](github-build-deploy.yml) | [azure-build-deploy.yml](azure-build-deploy.yml) |
 | Promote a selected successful build run without rebuilding | [github-promote.yml](github-promote.yml) | [azure-promote.yml](azure-promote.yml) |
 | Propose a selected build as an Argo CD GitOps PR | [github-gitops-propose.yml](github-gitops-propose.yml) | [azure-gitops-propose.yml](azure-gitops-propose.yml) |
 
@@ -24,17 +24,21 @@ Create protected approval environments `image-build`, `pprd-uks-aks01`, `pprd-uk
 
 ## Operate the pipeline
 
-1. Run namespace/access bootstrap against the selected slot(s), with the separately privileged bootstrap identity. It creates the restricted namespace and scoped application access; ordinary deployment never creates Namespace or grants itself permissions.
+1. Run namespace/access bootstrap against the selected cluster(s), with the separately privileged bootstrap identity. It creates the restricted namespace and scoped application access; ordinary deployment never creates Namespace or grants itself permissions.
 2. Prepare the separate [Envoy platform consumer](https://github.com/MikeeeGit/aks-delivery-templates/tree/main/examples/platform-envoy), install its pinned CRDs/controller/listeners, and complete [workload identity and CSI TLS setup](../../docs/GATEWAY-API.md). This has separate platform approvals and identity from namespace bootstrap. The TLS Secret is synchronized when the application pod mounts it, so listener readiness is checked after application deployment.
-3. Choose build-only, or build-and-deploy for a new release. Build-and-deploy passes the published digest and full source commit directly into selected-slot deployment.
+3. Choose build-only, or build-and-deploy for a new release. Build-and-deploy passes the published digest and full source commit directly into selected-cluster deployment.
 4. For later promotion, select a successful build run ID and its expected workflow/pipeline definition. The shared template downloads and checks that build's release receipt instead of accepting a guessed tag.
-5. Select `aks01`, `aks02`, or both in the intended order. Sequential deployment is the default; the second slot is reached only after the first succeeds. Parallel deployment is an explicit option, useful when both slots can safely change together. During an upgrade, usually select the inactive slot alone.
+5. Select `aks01`, `aks02`, or both in the intended order. Sequential deployment is the default; the second cluster is reached only after the first succeeds. Parallel deployment is an explicit option, useful when both clusters can safely change together. During an upgrade, usually select the inactive cluster alone.
 6. Complete [private frontend and gateway verification](../../docs/DELIVERY.md), then make a separately reviewed traffic change if needed.
 
 For Azure DevOps selected-run promotion, use `image-release-BuildApplication` for the build-only caller and `image-release-Application_Build` for the combined caller. A renamed shared build stage changes its artifact name; keep the expected artifact input explicit.
 
-Every chosen slot consumes the same source commit and image digest. The callers select delivery.gateway.apps.json and bootstrap.gateway.apps.json. Target verification checks the application Service plus the selected Gateway's current status and actual verified HTTPS route. It still does not prove Azure ILB assignment or the WAF path. A failed check fails deployment; rollback uses a previously approved release deliberately. No application workflow changes Application Gateway DNS or active traffic.
+Every chosen cluster consumes the same source commit and image digest. The callers select delivery.gateway.apps.json and bootstrap.gateway.apps.json. Target verification checks the application Service plus the selected Gateway's current status and actual verified HTTPS route. It still does not prove Azure ILB assignment or the WAF path. A failed check fails deployment; rollback uses a previously approved release deliberately. No application workflow changes Application Gateway DNS or active traffic.
 
 ## Full Azure workload identity example
 
-The additive [Azure workload identity guide](../../docs/AZURE-WORKLOAD.md) provides complete `github-azure-workload-build-deploy.yml` and `azure-azure-workload-build-deploy.yml` callers. They use `delivery.azure-workload.apps.json`, retain the Gateway API/TLS deployment and qualify a real application Key Vault CSI mount on every selected slot after deployment. Companion `*-azure-workload-promote.yml` callers reuse existing immutable-build promotion. The build approval name is `pprd-image-build`; match it to the Terraform-managed CI federation and actual protected environment.
+The additive [Azure workload identity guide](../../docs/AZURE-WORKLOAD.md) provides complete `github-azure-workload-build-deploy.yml` and `azure-azure-workload-build-deploy.yml` callers. They use `delivery.azure-workload.apps.json`, retain the Gateway API/TLS deployment and qualify a real application Key Vault CSI mount on every selected cluster after deployment. Companion `*-azure-workload-promote.yml` callers reuse existing immutable-build promotion. The build approval name is `pprd-image-build`; match it to the Terraform-managed CI federation and actual protected environment.
+
+## Full Azure Argo CD alternative
+
+Use the Azure workload GitOps proposal and Argo lifecycle callers together. The [ordered guide](../../docs/AZURE-ARGOCD.md) covers both CI hosts, target-cluster selection, coded sync access, CSI checks, traffic switching and retirement. Direct callers remain available.

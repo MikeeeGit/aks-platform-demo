@@ -1,0 +1,144 @@
+# Private consumer only; configure protected environments and the declared identities.
+trigger: none
+pr: none
+parameters:
+- name: action
+  displayName: Reviewed Argo operation
+  type: string
+  default: verify
+  values:
+  - install
+  - bootstrap
+  - sync
+  - verify
+  - retire
+- name: targetCluster
+  displayName: Target AKS cluster
+  type: string
+  default: aks02
+  values:
+  - aks01
+  - aks02
+- name: gitopsCommit
+  displayName: Approved full main-branch commit
+  type: string
+- name: releaseSha256
+  displayName: Approved release.json SHA256 (not needed for install)
+  type: string
+  default: ''
+resources:
+  repositories:
+  - repository: aksTemplates
+    type: git
+    name: Platform/aks-delivery-templates
+    ref: 9fd0d6bd2e860c3f2e6a6aae4f154c8d3d309179
+stages:
+- ${{ if eq(parameters.action, 'install') }}:
+  - stage: PrepareArgo
+    displayName: Prepare pinned Argo platform for review
+    jobs:
+    - job: Prepare
+      pool:
+        vmImage: ubuntu-24.04
+      steps:
+      - checkout: self
+        path: s/app
+        fetchDepth: 0
+        persistCredentials: false
+      - checkout: aksTemplates
+        path: s/templates
+        persistCredentials: false
+      - bash: |
+          set -euo pipefail
+          python3 "$(Pipeline.Workspace)/s/templates/scripts/ci_guard.py" azure-devops --latest
+          python3 -m venv "$(Agent.TempDirectory)/argo-python"
+          "$(Agent.TempDirectory)/argo-python/bin/pip" install --require-hashes -r "$(Pipeline.Workspace)/s/templates/requirements.txt"
+          python3 "$(Pipeline.Workspace)/s/templates/scripts/install_tools.py" --directory "$(Agent.TempDirectory)/argo-tools"
+          cd "$(Pipeline.Workspace)/s/app"
+          test "$(git rev-parse HEAD)" = "$APPROVED_COMMIT"
+          "$(Agent.TempDirectory)/argo-python/bin/python" "$(Pipeline.Workspace)/s/templates/scripts/argocd_bootstrap.py" prepare --namespace argocd --app-namespace platform-demo --profile evaluation --output "$(Agent.TempDirectory)/argo-platform"
+          sha=$(sha256sum "$(Agent.TempDirectory)/argo-platform/bootstrap.json" | cut -d' ' -f1)
+          echo "##vso[task.setvariable variable=sha;isOutput=true]$sha"
+        name: Receipt
+        displayName: Prepare and hash the platform artifact
+        env:
+          SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+          APPROVED_COMMIT: ${{ parameters.gitopsCommit }}
+      - task: PublishPipelineArtifact@1
+        inputs:
+          targetPath: $(Agent.TempDirectory)/argo-platform
+          artifact: argo-platform
+- stage: OperateArgo
+  displayName: Approve selected Argo operation
+  ${{ if eq(parameters.action, 'install') }}:
+    dependsOn: PrepareArgo
+    variables:
+      platformSha: $[ stageDependencies.PrepareArgo.Prepare.outputs['Receipt.sha'] ]
+  jobs:
+  - deployment: ArgoOperation
+    pool:
+      name: aks-private
+    timeoutInMinutes: 45
+    environment: argocd-${{ parameters.action }}-pprd-uks-${{ parameters.targetCluster }}
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - checkout: self
+            path: s/app
+            fetchDepth: 0
+            persistCredentials: false
+          - checkout: aksTemplates
+            path: s/templates
+            persistCredentials: false
+          - bash: |
+              set -euo pipefail
+              python3 "$(Pipeline.Workspace)/s/templates/scripts/ci_guard.py" azure-devops --latest
+              python3 -m venv "$(Agent.TempDirectory)/argo-python"
+              "$(Agent.TempDirectory)/argo-python/bin/pip" install --require-hashes -r "$(Pipeline.Workspace)/s/templates/requirements.txt"
+              python3 "$(Pipeline.Workspace)/s/templates/scripts/install_tools.py" --directory "$(Agent.TempDirectory)/argo-tools"
+            displayName: Recheck private protected source and install verified clients
+            env:
+              SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+          - ${{ if eq(parameters.action, 'install') }}:
+            - task: DownloadPipelineArtifact@2
+              inputs:
+                buildType: current
+                artifactName: argo-platform
+                targetPath: $(Pipeline.Workspace)/argo-platform
+          - task: AzureCLI@2
+            displayName: Run one reviewed Argo operation on the selected AKS cluster
+            inputs:
+              ${{ if or(eq(parameters.action, 'sync'), eq(parameters.action, 'verify')) }}:
+                azureSubscription: example-aks-deploy-federated
+              ${{ else }}:
+                azureSubscription: example-aks-bootstrap-federated
+              scriptType: bash
+              scriptLocation: inlineScript
+              visibleAzLogin: false
+              useGlobalConfig: false
+              inlineScript: |
+                set -euo pipefail
+                export PATH="$(Agent.TempDirectory)/argo-tools:$PATH"
+                cd "$(Pipeline.Workspace)/s/app"
+                set -- "$ACTION" --source "$PWD" --templates "$(Pipeline.Workspace)/s/templates" --gitops-commit "$APPROVED_COMMIT" --target-cluster "$TARGET_CLUSTER" --output "$(Agent.TempDirectory)/azure-argocd-result.json"
+                if [ "$ACTION" = install ]; then
+                  set -- "$@" --platform-bundle "$(Pipeline.Workspace)/argo-platform" --platform-sha256 "$PLATFORM_SHA"
+                else
+                  set -- "$@" --release-sha256 "$RELEASE_SHA"
+                fi
+                "$(Agent.TempDirectory)/argo-python/bin/python" scripts/azure_argocd.py "$@"
+            env:
+              ACTION: ${{ parameters.action }}
+              APPROVED_COMMIT: ${{ parameters.gitopsCommit }}
+              TARGET_CLUSTER: ${{ parameters.targetCluster }}
+              RELEASE_SHA: ${{ parameters.releaseSha256 }}
+              ${{ if eq(parameters.action, 'install') }}:
+                PLATFORM_SHA: $(platformSha)
+                ARGO_GIT_USERNAME: $(ARGO_GIT_USERNAME)
+                ARGO_GIT_READ_TOKEN: $(ARGO_GIT_READ_TOKEN)
+          - task: PublishPipelineArtifact@1
+            displayName: Retain private Argo and CSI verification report
+            inputs:
+              targetPath: $(Agent.TempDirectory)/azure-argocd-result.json
+              artifact: azure-argocd-${{ parameters.action }}-${{ parameters.targetCluster }}

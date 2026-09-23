@@ -1,6 +1,6 @@
 # First-time setup
 
-The additional [Argo CD deployment guide](ARGO-CD.md) reuses this same infrastructure, Gateway API profile and application configuration. Choose either direct application deployment or Argo ownership for each slot.
+The additional [Argo CD deployment guide](ARGO-CD.md) reuses this same infrastructure, Gateway API profile and application configuration. Choose either direct application deployment or Argo ownership for each cluster.
 
 ## Local tools and checks
 
@@ -56,7 +56,7 @@ Reserve each candidate IP in its correct subnet. The independently managed Envoy
 
 ## Platform-owned bootstrap
 
-[bootstrap.gateway.apps.json](../bootstrap.gateway.apps.json) supplies separately approved platform bootstrap targets. Replace the synthetic deployment principal **object IDs** (not client/application IDs), and match each Pod Security minor to the actual cluster. The example follows the platform's aks01 v1.35 / aks02 v1.36 upgrade slots. The maintained Gateway API profile requires Key Vault CSI; its bootstrap configuration enables that prerequisite check. The direct-Service alternative does not need CSI.
+[bootstrap.gateway.apps.json](../bootstrap.gateway.apps.json) supplies separately approved platform bootstrap targets. Replace the synthetic deployment principal **object IDs** (not client/application IDs), and match each Pod Security minor to the actual cluster. The example follows the platform's aks01 v1.35 / aks02 v1.36 upgrade clusters. The maintained Gateway API profile requires Key Vault CSI; its bootstrap configuration enables that prerequisite check. The direct-Service alternative does not need CSI.
 
 The [private bootstrap workflow](../examples/delivery/github-bootstrap.yml) uses a separate federated platform identity and bootstrap approval environments. That identity needs existing user-kubeconfig access, Kubernetes permission to create namespaces, and Azure role-assignment permission at the selected cluster scope. Its privileged role is deliberately separate from ordinary application deployment. The helper checks private managed-Entra AKS, disabled local accounts, workload identity, selected tenant/subscription, and Pod Security compatibility before creating the namespace and scoped deployment role assignments. It uses user credentials, never admin kubeconfig. Allow role-assignment propagation before the first application deploy.
 
@@ -89,4 +89,4 @@ The shared [opt-in authorization example](https://github.com/MikeeeGit/aks-deliv
 
 ## Qualify the Azure workload identity path
 
-Use the additive [Azure workload identity profile](AZURE-WORKLOAD.md) when deploying the full Azure reference. Its combined callers build, deploy selected slots and verify the actual app identity/Key Vault CSI mount. The same application manifests can be delivered through the documented Argo method.
+Use the additive [Azure workload identity profile](AZURE-WORKLOAD.md) when deploying the full Azure reference. Its combined callers build, deploy selected clusters and verify the actual app identity/Key Vault CSI mount. The same application manifests can be delivered through the documented Argo method.

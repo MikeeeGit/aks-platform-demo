@@ -1,5 +1,19 @@
 # AKS platform demo
 
+## Target clusters
+
+The two names **aks01** and **aks02** identify independent AKS clusters. Either
+cluster can serve active traffic; the other can be updated and verified before
+a separately approved traffic switch.
+
+Pipeline selectors are now **targetClusters / target-clusters** for a list and
+**targetCluster / target-cluster** for one cluster. Update caller parameters and
+the immutable shared-template reference together. Earlier pinned revisions keep
+their earlier interface. The stored release/configuration field named
+`slot` remains the cluster identifier for compatibility with existing receipts;
+it is not an Azure App Service deployment slot.
+
+
 
 Start with the [three-tier worked example](docs/WORKED-EXAMPLE.md) for a complete disposable deployment, stable-endpoint switch, rollback and removal; it links the separate Azure deployment and removal procedures.
 
@@ -25,10 +39,10 @@ Visit `http://localhost:8080/version`. The application has no npm runtime depend
 | --- | --- |
 | `/healthz` | Process liveness |
 | `/readyz` | Readiness; returns 503 while draining or when an enabled secret dependency is unavailable |
-| `/version` | Application, package version, full source revision, and runtime slot |
+| `/version` | Application, package version, full source revision, and runtime cluster |
 | `/api/healthz`, `/api/readyz`, `/api/version` | Equivalent endpoints for the gateway's API path rule |
 
-`APP_SLOT` accepts `local`, `aks01`, or `aks02`. `PORT` defaults to 8080. `SHUTDOWN_DELAY_MS` defaults to 3000; SIGTERM marks the app unready before closing connections. The source revision is baked into the image; the slot is runtime configuration.
+`APP_SLOT` accepts `local`, `aks01`, or `aks02`. `PORT` defaults to 8080. `SHUTDOWN_DELAY_MS` defaults to 3000; SIGTERM marks the app unready before closing connections. The source revision is baked into the image; the cluster is runtime configuration.
 
 The optional `APP_REQUIRED_SECRET_FILE` setting requires a readable nonempty mounted file before readiness succeeds. The [real Azure workload identity profile](docs/AZURE-WORKLOAD.md) uses it to qualify Key Vault CSI access without exposing secret content.
 
@@ -36,12 +50,12 @@ The optional `APP_REQUIRED_SECRET_FILE` setting requires a readable nonempty mou
 
 - [Maintained delivery context](delivery.gateway.apps.json): registry, explicit cluster targets and controller HTTPS verification.
 - [Gateway API app base](deploy/gateway-api/base/kustomization.yaml): workload, ClusterIP Service, HTTPRoute, CSI TLS, autoscaling and NetworkPolicy.
-- [aks01 overlay](deploy/gateway-api/overlays/pprd/uks/aks01/kustomization.yaml) and [aks02 overlay](deploy/gateway-api/overlays/pprd/uks/aks02/kustomization.yaml): the same application with explicit slot metadata.
+- [aks01 overlay](deploy/gateway-api/overlays/pprd/uks/aks01/kustomization.yaml) and [aks02 overlay](deploy/gateway-api/overlays/pprd/uks/aks02/kustomization.yaml): the same application with explicit cluster metadata.
 - [Operator namespace bootstrap](deploy/bootstrap/namespace.yaml): applied separately with Pod Security admission restricted.
 - [Private pipeline examples](examples/delivery/README.md): trusted build and selected-release promotion through shared templates.
-- [Real Azure identity profile](docs/AZURE-WORKLOAD.md): coded workload identity bindings, app-secret CSI, full build/deploy callers and per-slot live qualification.
-- [Argo CD example](docs/ARGO-CD.md): reviewed GitOps proposals and per-slot reconciliation of the same rendered YAML.
-- [Smoke helper](scripts/smoke.mjs): expected slot and full revision checks over HTTP or verified HTTPS.
+- [Real Azure identity profile](docs/AZURE-WORKLOAD.md): coded workload identity bindings, app-secret CSI, full build/deploy callers and per-cluster live qualification.
+- [Argo CD example](docs/ARGO-CD.md): reviewed GitOps proposals and per-cluster reconciliation of the same rendered YAML.
+- [Smoke helper](scripts/smoke.mjs): expected cluster and full revision checks over HTTP or verified HTTPS.
 
 The recommended full path uses the independently managed Envoy Gateway platform profile and application-owned HTTPRoutes. Read the [Gateway API profile guide](docs/GATEWAY-API.md) before first deployment. Its ClusterIP Service forwards port 80 to the nonroot app on 8080. The platform pipeline owns the private listener and load balancer. The [direct-Service context](delivery.apps.json) remains a lightweight alternative with its own internal LoadBalancer; it is not the full ingress architecture.
 

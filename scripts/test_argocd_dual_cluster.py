@@ -173,7 +173,7 @@ class ArgoAcceptance(Acceptance):
                 application.get("spec", {}).get("syncPolicy", {}).get("automated") is not None):
             raise ValueError("Acceptance requires idle manual Argo synchronization.")
         self.refresh(cluster, slot)
-        self.kubectl(cluster, "-n", "argocd", "patch", "application", self.application_name(slot),
+        self.kubectl(cluster, "--as", "argo-sync-acceptance", "-n", "argocd", "patch", "application", self.application_name(slot),
                      "--type=merge", "-p", json.dumps(argo.sync_patch(revision)))
         value = argo.wait_application(lambda: self.fetch_application(cluster, slot), revision,
                                      expectation, timeout=600)
@@ -213,6 +213,56 @@ class ArgoAcceptance(Acceptance):
                 raise TimeoutError("HPA has not obtained usable metrics: " + json.dumps(conditions))
             time.sleep(2)
 
+    def install_sync_identity(self, cluster, slot):
+        # Exercise the Azure adapter's namespace-scoped grant with a synthetic
+        # Kubernetes user. This proves Kubernetes RBAC, not Azure federation.
+        from azure_argocd import access_resources
+        target = {"environment": "pprd", "region": "uks", "slot": slot}
+        native = {"targets": [dict(target, authorization_mode="kubernetes_rbac",
+            deploy_principal_object_ids=["00000000-0000-0000-0000-000000000101"],
+            deploy_kubernetes_usernames={
+                "00000000-0000-0000-0000-000000000101": "argo-sync-acceptance"})]}
+        resources = access_resources(native, target, "argocd", self.application_name(slot))
+        path = self.artifacts / ("sync-access-" + slot + ".json")
+        path.write_text(json.dumps({"apiVersion": "v1", "kind": "List", "items": list(resources)}))
+        self.kubectl(cluster, "apply", "-f", str(path))
+        for verb, resource, expected in [
+                ("get", "applications.argoproj.io/" + self.application_name(slot), True),
+                ("patch", "applications.argoproj.io/" + self.application_name(slot), True),
+                ("patch", "applications.argoproj.io/unrelated-application", False),
+                ("get", "secrets", False)]:
+            response = subprocess.run(
+                [str(self.args.kubectl), "--kubeconfig", str(self.kubeconfig),
+                 "--context", "kind-" + cluster, "--as", "argo-sync-acceptance",
+                 "auth", "can-i", verb, resource, "-n", "argocd"],
+                text=True, capture_output=True, timeout=30)
+            if response.returncode != (0 if expected else 1) or response.stdout.strip() != ("yes" if expected else "no"):
+                raise ValueError("Scoped Argo sync identity permission differs from expectation")
+            self.record.setdefault("argo_sync_identity_checks", []).append({
+                "cluster": slot, "verb": verb, "resource": resource, "allowed": expected})
+
+    def retire_application(self, cluster, slot):
+        from azure_argocd import retirement_options
+        current = self.fetch_application(cluster, slot)
+        workload = json.loads(self.kubectl(cluster, "-n", "platform-demo", "get",
+                             "deployment/platform-demo", "-o", "json", capture=True))
+        options = retirement_options(current, current)
+        path = self.artifacts / ("retire-application-" + slot + ".json")
+        path.write_text(json.dumps(options))
+        self.kubectl(cluster, "delete", "--raw",
+                     "/apis/argoproj.io/v1alpha1/namespaces/argocd/applications/" + self.application_name(slot),
+                     "-f", str(path))
+        self.kubectl(cluster, "-n", "argocd", "wait", "--for=delete",
+                     "application/" + self.application_name(slot), "--timeout=90s")
+        remaining = self.kubectl(cluster, "-n", "argocd", "get", "application",
+                                self.application_name(slot), "--ignore-not-found", "-o", "name", capture=True)
+        after = json.loads(self.kubectl(cluster, "-n", "platform-demo", "get",
+                          "deployment/platform-demo", "-o", "json", capture=True))
+        if remaining.strip() or after["metadata"]["uid"] != workload["metadata"]["uid"]:
+            raise ValueError("Argo retirement did not preserve the existing workload")
+        self.record.setdefault("argo_retirement_checks", []).append({
+            "cluster": slot, "application_absent": True, "workload_uid_preserved": True})
+
     def execute(self):
         self.prepare_argo()
         first = self.build(self.original_commit, "initial")
@@ -224,6 +274,7 @@ class ArgoAcceptance(Acceptance):
         initial_git = self.commit_git("Initial approved release for both slots")
         for slot, cluster in zip(argo.SLOTS, self.clusters):
             self.create_application(cluster, slot, bundles[slot])
+            self.install_sync_identity(cluster, slot)
             self.sync(cluster, slot, initial_git, label="initial")
             self.check_release(cluster, slot, self.original_commit, first, "argocd-initial")
             self.check_hpa(cluster, slot)
@@ -295,6 +346,8 @@ class ArgoAcceptance(Acceptance):
             "result": "passed", "clusters": list(self.clusters),
             "traffic_cutover_and_rollback": True,
         })
+        for slot, cluster in zip(argo.SLOTS, self.clusters):
+            self.retire_application(cluster, slot)
         self.record["result"] = "passed"
 
     def collect_diagnostics(self):

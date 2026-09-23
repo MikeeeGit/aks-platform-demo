@@ -2,7 +2,7 @@ name: Private application namespace bootstrap
 on:
   workflow_dispatch:
     inputs:
-      cluster-slots:
+      target-clusters:
         description: Selected clusters requiring platform-owned application bootstrap
         required: true
         type: choice
@@ -14,13 +14,13 @@ permissions:
 jobs:
   bootstrap:
     # Keep both pins on the same reviewed shared-template commit.
-    uses: MikeeeGit/aks-delivery-templates/.github/workflows/bootstrap.yml@f0034fd0f5a4f56271c514c439ca0e3795c56aae
+    uses: MikeeeGit/aks-delivery-templates/.github/workflows/bootstrap.yml@9fd0d6bd2e860c3f2e6a6aae4f154c8d3d309179
     with:
-      template-ref: 'f0034fd0f5a4f56271c514c439ca0e3795c56aae'
+      template-ref: '9fd0d6bd2e860c3f2e6a6aae4f154c8d3d309179'
       config: delivery.gateway.apps.json
       bootstrap-config: bootstrap.gateway.apps.json
       environment: pprd
       region: uks
-      cluster-slots: ${{ inputs.cluster-slots }}
+      target-clusters: ${{ inputs.target-clusters }}
       client-id: ${{ vars.AZURE_AKS_BOOTSTRAP_CLIENT_ID }}
       runs-on: '["self-hosted","linux","aks-private"]'

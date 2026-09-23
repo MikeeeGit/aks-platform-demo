@@ -7,6 +7,11 @@ parameters:
   - name: buildDefinitionId
     displayName: Expected trusted image build pipeline definition ID
     type: string
+  - name: buildArtifact
+    displayName: Receipt artifact from the selected image build
+    type: string
+    default: image-release-BuildApplication
+    values: [image-release-BuildApplication, image-release-Application_Build]
   - name: targetCluster
     displayName: One selected cluster
     type: string
@@ -23,9 +28,9 @@ stages:
     parameters:
       buildRunId: ${{ parameters.buildRunId }}
       buildDefinitionId: ${{ parameters.buildDefinitionId }}
-      buildArtifact: image-release-BuildApplication
+      buildArtifact: ${{ parameters.buildArtifact }}
       environment: pprd
       region: uks
       targetCluster: ${{ parameters.targetCluster }}
-      configFile: delivery.gateway.apps.json
+      configFile: delivery.azure-workload.apps.json
       approvalEnvironment: gitops-proposals

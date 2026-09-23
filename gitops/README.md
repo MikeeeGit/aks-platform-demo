@@ -14,6 +14,6 @@ gitops/releases/pprd/uks/aks02/
 
 The same Kustomize source used by direct pipelines generates the concrete YAML upstream. Argo reads only `manifest.yaml`, through its explicit directory include filter. It does not run Kustomize again and does not apply the receipt JSON files.
 
-Do not copy synthetic image digests into an active release. Use a successful image-build receipt and the proposal pipeline. Review and merge one slot's PR, synchronize its exact commit, then complete HTTPS verification before proposing the next slot. The build's source commit and the GitOps merge commit have different purposes.
+Do not copy synthetic image digests into an active release. Use a successful image-build receipt and the proposal pipeline. Review and merge one cluster's PR, synchronize its exact commit, then complete HTTPS verification before proposing the next cluster. The build's source commit and the GitOps merge commit have different purposes.
 
 Start with [Argo CD deployment](../docs/ARGO-CD.md). Keep repository credentials, TLS private keys, tokens and kubeconfigs outside Git.

@@ -19,11 +19,11 @@ jobs:
     with:
       template-ref: '9fd0d6bd2e860c3f2e6a6aae4f154c8d3d309179'
       build-run-id: ${{ inputs.build-run-id }}
-      build-workflow: image-build.yml
+      build-workflow: image-build.yml # Copy github-azure-workload-build.yml to this private workflow filename.
       environment: pprd
       region: uks
       target-cluster: ${{ inputs.target-cluster }}
-      config: delivery.gateway.apps.json
+      config: delivery.azure-workload.apps.json
       approval-environment: gitops-proposals
     secrets:
       gitops-token: ${{ secrets.GITOPS_PR_TOKEN }}

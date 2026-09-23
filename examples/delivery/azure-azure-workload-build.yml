@@ -11,5 +11,5 @@ stages:
     parameters:
       serviceConnection: example-acr-build-federated
       deploymentEnvironment: image-build
-      configFile: delivery.gateway.apps.json
+      configFile: delivery.azure-workload.apps.json
       pool: {vmImage: ubuntu-24.04}

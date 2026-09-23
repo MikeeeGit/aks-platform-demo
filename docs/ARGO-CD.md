@@ -6,7 +6,7 @@ Kustomize prepares Kubernetes YAML; Argo reconciles Git with Kubernetes. They ar
 
 ## Architecture and repository layout
 
-Infrastructure and platform installation are unchanged. Terraform owns both private AKS slots, networking, identities and the edge WAF. Platform pipelines own namespaces, Envoy Gateway, TLS scaffolding and Argo installation. Each slot has its own Argo instance and an Application restricted to the local application namespace.
+Infrastructure and platform installation are unchanged. Terraform owns both private AKS clusters, networking, identities and the edge WAF. Platform pipelines own namespaces, Envoy Gateway, TLS scaffolding and Argo installation. Each cluster has its own Argo instance and an Application restricted to the local application namespace.
 
 The private application repository holds both source and approved desired releases:
 
@@ -27,13 +27,13 @@ Read the shared [design](https://github.com/MikeeeGit/aks-delivery-templates/blo
 
 1. Follow [SETUP](SETUP.md) and the [Gateway API profile](GATEWAY-API.md). Complete the actual Azure output/identity/DNS/certificate configuration in a **private** consumer. Use the [Azure sandbox guide](https://github.com/MikeeeGit/terraform-delivery-templates/blob/main/docs/azure/sandbox-deployment.md) for infrastructure order and stop gates.
 2. Copy [gitops.config.example.json](../gitops.config.example.json) to `gitops.config.json`. Replace the clone URL and each `cluster_api_servers` entry with the actual reviewed private AKS API URL. Keep HTTPS and certificate validation. A display name alone is not a cluster identity check.
-3. Install the pinned Argo bundle in each selected slot using the shared [deployment guide](https://github.com/MikeeeGit/aks-delivery-templates/blob/main/docs/argocd-deployment.md). It covers explicit kubeconfig/context, credential-free preparation, reviewed apply, private repository credentials and initial admin/SSO responsibilities.
+3. Install the pinned Argo bundle in each selected cluster using the shared [deployment guide](https://github.com/MikeeeGit/aks-delivery-templates/blob/main/docs/argocd-deployment.md). It covers explicit kubeconfig/context, credential-free preparation, reviewed apply, private repository credentials and initial admin/SSO responsibilities.
 4. Copy the existing [build-only caller](../examples/delivery/README.md) into your private CI. It builds once and publishes a promotable receipt only after the immutable image passes the security gate.
 5. Copy either [GitHub proposal](../examples/delivery/github-gitops-propose.yml) or [Azure DevOps proposal](../examples/delivery/azure-gitops-propose.yml). Preserve the reviewed full template pin. Configure `gitops-proposals` approvals and the scoped repository publisher permissions described below.
-6. Select a successful build and **one** slot. Review the PR's image digest, source revision, target, HTTPRoute, policy and concrete YAML. Merge through protected-branch checks. The proposal workflow never merges or synchronizes.
+6. Select a successful build and **one** cluster. Review the PR's image digest, source revision, target, HTTPRoute, policy and concrete YAML. Merge through protected-branch checks. The proposal workflow never merges or synchronizes.
 7. Use that committed folder to generate/review the Argo Project/Application. Apply those control resources through the platform operator as documented. The first sync is explicit; no application auto-sync, auto-prune or cascading deletion finalizer is configured.
-8. Follow the shared exact-commit sync and verification command. It checks that the reviewed folder matches the selected Git commit, binds the kubeconfig to the reviewed API endpoint, checks the Application's repository/path/project/destination, and waits for that operation to finish. Acceptance then checks the image, Service, web/API HTTPS routes, slot and application source revision.
-9. Repeat for the other slot after the first is healthy. Both slots consume the same approved image; their runtime slot/configuration differs. Leave the existing active traffic target alone until a separate infrastructure change is approved.
+8. Follow the shared exact-commit sync and verification command. It checks that the reviewed folder matches the selected Git commit, binds the kubeconfig to the reviewed API endpoint, checks the Application's repository/path/project/destination, and waits for that operation to finish. Acceptance then checks the image, Service, web/API HTTPS routes, cluster and application source revision.
+9. Repeat for the other cluster after the first is healthy. Both clusters consume the same approved image; their runtime cluster/configuration differs. Leave the existing active traffic target alone until a separate infrastructure change is approved.
 
 For an existing installation, initially propose the currently deployed release and inspect the Argo diff. Pause direct deployment before Argo takes ownership. The [operations manual](https://github.com/MikeeeGit/aks-delivery-templates/blob/main/docs/argocd-operations.md) includes the complete handover.
 
@@ -55,18 +55,18 @@ Three identifiers appear during a release:
 | Image digest | Exact built and scanned container |
 | GitOps commit | Desired configuration revision reconciled by Argo |
 
-Do not compare `/version` with the GitOps merge SHA. Updating one slot can advance the watched branch for both Applications while the other slot's image and application source remain unchanged.
+Do not compare `/version` with the GitOps merge SHA. Updating one cluster can advance the watched branch for both Applications while the other cluster's image and application source remain unchanged.
 
 ## Routine operation and recovery
 
 The default is manual sync with continuous drift visibility. Auto-sync is an optional future operating-policy change; the supplied operator helper rejects an automated owner. HPA owns the replica count, with Argo's ignore-differences setting preserving it.
 
-Promote the inactive slot first. A failed sync, unhealthy rollout or incorrect HTTPS response stops acceptance. Rollback restores a previous approved release folder in a new reviewed Git commit, then synchronizes and verifies it. Argo application rollback does not roll back data/schema changes or switch Application Gateway traffic.
+Promote the inactive cluster first. A failed sync, unhealthy rollout or incorrect HTTPS response stops acceptance. Rollback restores a previous approved release folder in a new reviewed Git commit, then synchronizes and verifies it. Argo application rollback does not roll back data/schema changes or switch Application Gateway traffic.
 
-Use the [operations manual](https://github.com/MikeeeGit/aks-delivery-templates/blob/main/docs/argocd-operations.md) for promotion, rollback, drift, backups, upgrades and ownership transfer; use [troubleshooting](https://github.com/MikeeeGit/aks-delivery-templates/blob/main/docs/argocd-troubleshooting.md) for Git, RBAC, sync, TLS, HPA and dual-slot incidents.
+Use the [operations manual](https://github.com/MikeeeGit/aks-delivery-templates/blob/main/docs/argocd-operations.md) for promotion, rollback, drift, backups, upgrades and ownership transfer; use [troubleshooting](https://github.com/MikeeeGit/aks-delivery-templates/blob/main/docs/argocd-troubleshooting.md) for Git, RBAC, sync, TLS, HPA and dual-cluster incidents.
 
 ## Evidence
 
-The separate [Argo acceptance harness](../scripts/test_argocd_dual_cluster.py) starts two real Kubernetes clusters and real Argo controllers. It exercises initial release, inactive-slot promotion, Git rollback, invalid desired-state rejection and recovery, drift detection/repair, active-slot preservation, HPA, RBAC and actual Envoy HTTPS. See [TESTING](TESTING.md) for exact commands, fixture changes and what a successful report does and does not establish.
+The separate [Argo acceptance harness](../scripts/test_argocd_dual_cluster.py) starts two real Kubernetes clusters and real Argo controllers. It exercises initial release, inactive-cluster promotion, Git rollback, invalid desired-state rejection and recovery, drift detection/repair, active-cluster preservation, HPA, RBAC and actual Envoy HTTPS. See [TESTING](TESTING.md) for exact commands, fixture changes and what a successful report does and does not establish.
 
 Public CI is credential-free. Private proposal API calls are covered by contract tests; your own token permissions and protected-branch approval configuration still require a private-consumer trial. Real AKS networking, Entra/workload identity, CSI/Key Vault, Azure LoadBalancers, WAF and cutover remain Azure qualification work.
