@@ -188,6 +188,15 @@ The [21 September Azure record](https://github.com/MikeeeGit/terraform-delivery-
 qualifies **direct** Azure delivery and full removal. This added Azure Argo
 adapter needs its own private live qualification before claiming a cloud pass.
 
+On **23 September 2026**, [GitHub run 35827415210](https://github.com/MikeeeGit/aks-platform-demo/actions/runs/35827415210)
+passed both real kind paths: direct in **4m07s** and Argo in **8m41s**, with
+empty cleanup-error lists. The Argo report records **eight scoped sync-permission
+checks** and **two Application retirements preserving the existing Deployment UID**.
+The tested PR merge tree matches published application revision
+**75eb0f3405558bb3761faeda4628969d30125f52** and uses shared templates
+**9fd0d6bd2e860c3f2e6a6aae4f154c8d3d309179**. These are Kubernetes acceptance
+results, not a live Azure Argo result.
+
 Public tests exercise rejection paths, credential preservation, scoped sync
 rights and retirement preconditions. The real two-cluster Argo test additionally
 installs the generated sync Role/RoleBinding, uses it for sync, checks denied
